@@ -1299,17 +1299,17 @@ def generate_chat(messages, roles, channels, max_length, my_id, my_roles, member
                     name_len = len(ref_message["username"][:dyn_limit_username])
                 else:
                     name_len = len(limit_width_wch(global_name, dyn_limit_username)[0])
-                end_name_reply = pre_name_len_reply + name_len + 1
             temp_chat.append(reply_line)
             if disable_formatting or reply_color_format == color_blocked:
                 temp_format.append([color_base])
             elif mentioned:
                 if dynamic_name_len:
-                    temp_format.append(shift_formats(color_mention_reply, end_name_reply, name_len - limit_username))
+                    temp_format.append(shift_formats(color_mention_reply, pre_name_len_reply, name_len - limit_username))
                 else:
                     temp_format.append(shift_formats(color_mention_reply, pre_name_len_reply, wide_shift))
             elif dynamic_name_len:
-                temp_format.append(shift_formats(color_reply, end_name_reply, name_len - limit_username))
+                logger.info((color_reply, pre_name_len_reply, name_len - limit_username))
+                temp_format.append(shift_formats(color_reply, pre_name_len_reply, name_len - limit_username))
             else:
                 temp_format.append(shift_formats(color_reply, pre_name_len_reply, wide_shift))
             temp_chat_map.append((num, None, True, None, None, None))
@@ -1590,7 +1590,7 @@ def generate_chat(messages, roles, channels, max_length, my_id, my_roles, member
         elif mentioned:
             format_line = color_mention_message[:]
             if dynamic_name_len:
-                format_line = shift_formats(format_line, end_name, name_len - limit_username)
+                format_line = shift_formats(format_line, pre_name_len+1, name_len - limit_username)
             else:
                 format_line = shift_formats(format_line, pre_name_len+1, wide_shift)
             format_line += format_multiline_one_line_format(md_format, newline_index+1, 0, quote)
@@ -1609,7 +1609,7 @@ def generate_chat(messages, roles, channels, max_length, my_id, my_roles, member
         else:
             format_line = color_message[:]
             if dynamic_name_len:
-                format_line = shift_formats(format_line, end_name, name_len - limit_username)
+                format_line = shift_formats(format_line, pre_name_len+1, name_len - limit_username)
             else:
                 format_line = shift_formats(format_line, pre_name_len+1, wide_shift)
             format_line += format_multiline_one_line_format(md_format, newline_index+1, 0, quote)
