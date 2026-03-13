@@ -12,7 +12,7 @@ COMMAND_ASSISTS = (
     ("react *[reaction] - show prompt or react to message", "react"),
     ("status *[type] - change your status 1/online, 2/idle, 3/dnd, 4/invisible", "status"),
     ("open_link *[num] - open selected link or specify index if multiple are on same line", "open_link"),
-    ("copyn_link *[num] - copy selected link to clipboard or specify index if multiple are on same line", "copy_link"),
+    ("copy_link *[num] - copy selected link to clipboard or specify index if multiple are on same line", "copy_link"),
     ("download *[num] - download selected attachment", "download"),
     ("play *[num] - play selected attachment", "play"),
     ("search *[query] - prompt for message search or search provided string", "search"),

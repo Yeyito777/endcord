@@ -172,15 +172,15 @@ wheels = [
 
 [[package]]
 name = "discord-protos"
-version = "1.2.123"
+version = "1.2.126"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "mypy-protobuf" },
     { name = "protobuf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e2/fd/c3dfc2f67d81c53f763bd577e93203583b04c099578e49a6ad1dd14656fc/discord_protos-1.2.123.tar.gz", hash = "sha256:422b22d247045c7c3fa28aa2558d4f02666bfa659ae7cf333fc123f803a82eea", size = 131181, upload-time = "2026-03-06T09:35:09.143Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/31/b5/4ce66d5cb709299a949558c3556e43b455406fa51e34d754524be5bfb60f/discord_protos-1.2.126.tar.gz", hash = "sha256:227dcc4d47a72b741ee170d28106cfacb274347713db2a9963fdabd1f50abd18", size = 162942, upload-time = "2026-03-12T18:59:38.438Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/56/76/ab2dc74ea770d273617153d39a0a9bd9ad24d9474b4e64c292db90430827/discord_protos-1.2.123-py3-none-any.whl", hash = "sha256:f90a6092935f456599db46a644919a6bfe710a82af48e3c31ac4796adab03e46", size = 148017, upload-time = "2026-03-06T09:35:07.711Z" },
+    { url = "https://files.pythonhosted.org/packages/71/67/01f5084e5bef70cb389f4204355e58846f286ea78791a89ca0c5adb7f10f/discord_protos-1.2.126-py3-none-any.whl", hash = "sha256:95f7d9008136bff3cca4d720bdd9654ecfd089286f3bff572e42157be65cf4d0", size = 180010, upload-time = "2026-03-12T18:59:37.017Z" },
 ]
 
 [[package]]
@@ -235,7 +235,7 @@ media = [
 [package.metadata]
 requires-dist = [
     { name = "certifi", marker = "sys_platform == 'darwin'", specifier = ">=2026.2.25" },
-    { name = "discord-protos", specifier = ">=1.2.123" },
+    { name = "discord-protos", specifier = ">=1.2.126" },
     { name = "emoji", specifier = ">=2.15.0" },
     { name = "filetype", specifier = ">=1.2.0" },
     { name = "numpy", specifier = ">=2.4.3" },

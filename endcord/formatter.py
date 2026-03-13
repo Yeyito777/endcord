@@ -29,7 +29,7 @@ match_escaped_md = re.compile(r"\\(?=[^a-zA-Z\d\s])")
 match_md_spoiler = re.compile(r"(?<!\\)\|\|.+?\|\|")
 match_md_code_snippet = re.compile(r"(?<!`|\\)`[^`]+`")
 match_md_code_block = re.compile(r"(?s)```.*?```")
-match_url = re.compile(r"https?:\/\/[\w-]+(\.[\w-])+[^\s)\]>]*")
+match_url = re.compile(r"https?:\/\/[\w.-]+(\.[\w-])+[^\s)\]>]*[^\s).\]>]")
 match_discord_channel_url = re.compile(r"https:\/\/discord(?:app)?\.com\/channels\/(\d*)\/(\d*)(?:\/(\d*))?")
 match_sticker_id = re.compile(r"<;\d+;>")
 match_md_all = re.compile(
@@ -1845,7 +1845,7 @@ class ChatGenerator:
                     newline_sign = True
                     split_on_space = 0
                 elif newline_index <= self.newline_len + 2*quote:
-                    newline_index = split_index_wch(message_line, max_length)
+                    newline_index = split_index_wch(new_line, max_length)
                 try:
                     if new_line[newline_index] in (" ", "\n"):   # remove space and \n
                         next_line = new_line[newline_index + 1:]

@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "certifi>=2026.2.25 ; sys_platform == 'darwin'",
-    "discord-protos>=1.2.123",
+    "discord-protos>=1.2.126",
     "emoji>=2.15.0",
     "filetype>=1.2.0",
     "numpy>=2.4.3",
