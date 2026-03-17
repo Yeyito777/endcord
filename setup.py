@@ -5,14 +5,14 @@ from Cython.Build import cythonize
 from setuptools import Extension, setup
 
 extra_compile_args = [
-    # "-flto",   # unnecesary since all pyx files are separated
+    "-flto",
     "-O3",
     "-ffast-math",
     "-fomit-frame-pointer",
     "-funroll-loops",
 ]
 extra_link_args = [
-    # "-flto",
+    "-flto",
     "-O3",
     "-s",
 ]
