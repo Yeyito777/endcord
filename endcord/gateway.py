@@ -965,9 +965,11 @@ class Gateway():
                             nick=message["member"].get("nick"),
                             nonce=message["channel_id"],
                         )
-                    if not is_relevant_message(optext, message, self.active_channel, self.channel_cache, self.guilds, self.my_id, self.my_roles):
-                        if not self.execute_extensions_method_first("on_message_event_is_irrelevant", message, optext, cache=True):
-                            continue
+                    if not is_relevant_message(optext, message, self.active_channel, self.channel_cache, self.guilds, self.my_id, self.my_roles) and not self.execute_extensions_method_first("on_message_event_is_irrelevant", message, optext, cache=True):
+                        self.messages_buffer.append({
+                            "op": "MESSAGE_CREATE_QUICK",
+                            "d": (message["content"], message["id"], message["guild_id"], message["channel_id"]),   # just to set channel as unread in tree
+                        })
                     message_done = prepare_message(message)
                     message_done.update({
                         "channel_id": message["channel_id"],
@@ -984,9 +986,8 @@ class Gateway():
 
                 elif optext == "MESSAGE_UPDATE":
                     message = response["d"]
-                    if not is_relevant_message(optext, message, self.active_channel, self.channel_cache, self.guilds, self.my_id, self.my_roles):
-                        if not self.execute_extensions_method_first("on_message_event_is_irrelevant", message, optext, cache=True):
-                            continue
+                    if not is_relevant_message(optext, message, self.active_channel, self.channel_cache, self.guilds, self.my_id, self.my_roles) and not self.execute_extensions_method_first("on_message_event_is_irrelevant", message, optext, cache=True):
+                        continue
                     message_done = prepare_message(message)
                     message_done.update({
                         "channel_id": message["channel_id"],

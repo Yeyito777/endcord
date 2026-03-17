@@ -6650,79 +6650,92 @@ class Endcord:
         op = new_message["op"]
         new_message_channel_id = data["channel_id"]
         this_channel = self.active_channel["channel_id"] == new_message_channel_id
-        if op == "MESSAGE_CREATE":
-            if data["user_id"] == self.my_id:
-                self.set_channel_me_seen(new_message_channel_id, data["id"])
-            elif data["user_id"] not in self.blocked:
-                # skip muted channels
-                muted = False
-                message_notifications = 2   # 0 - all messages, 1 - only mentions, 2 - nothing
-                for guild in self.guilds:
+        if op != "MESSAGE_CREATE":
+            return
+
+        if data["user_id"] == self.my_id:
+            self.set_channel_me_seen(new_message_channel_id, data["id"])
+
+        elif data["user_id"] not in self.blocked:
+            # skip muted channels
+            muted = False
+            message_notifications = 2   # 0 - all messages, 1 - only mentions, 2 - nothing
+            for guild in self.guilds:
+                if guild["guild_id"] == data["guild_id"]:
+                    muted = guild.get("muted")
+                    suppress_everyone = guild.get("suppress_everyone")
+                    suppress_roles = guild.get("suppress_roles")
+                    for channel in guild["channels"]:
+                        if new_message_channel_id == channel["id"]:
+                            if channel.get("muted") or channel.get("hidden"):
+                                muted = True
+                            else:
+                                message_notifications = channel.get("message_notifications", 2)
+                                if message_notifications >= 10:
+                                    message_notifications -= 10
+                            break
+                    break
+            else:
+                suppress_everyone = False
+                suppress_roles = False
+            for dm in self.dms:
+                if dm["id"] == new_message_channel_id:
+                    is_dm = True
+                    muted = dm.get("muted")
+                    message_notifications = 0
+                    break
+            else:
+                is_dm = False
+
+            if not muted:
+                ping = False
+                # check if this message should ping
+                mentions = data["mentions"]
+                # select my roles from same guild as message
+                my_roles = []
+                for guild in self.my_roles:
                     if guild["guild_id"] == data["guild_id"]:
-                        muted = guild.get("muted")
-                        suppress_everyone = guild.get("suppress_everyone")
-                        suppress_roles = guild.get("suppress_roles")
-                        for channel in guild["channels"]:
-                            if new_message_channel_id == channel["id"]:
-                                if channel.get("muted") or channel.get("hidden"):
-                                    muted = True
-                                else:
-                                    message_notifications = channel.get("message_notifications", 2)
-                                    if message_notifications >= 10:
-                                        message_notifications -= 10
-                                break
-                        break
-                else:
-                    suppress_everyone = False
-                    suppress_roles = False
-                for dm in self.dms:
-                    if dm["id"] == new_message_channel_id:
-                        is_dm = True
-                        muted = dm.get("muted")
-                        message_notifications = 0
-                        break
-                else:
-                    is_dm = False
-                if not muted:
-                    ping = False
-
-                    # check if this message should ping
-                    mentions = data["mentions"]
-                    # select my roles from same guild as message
-                    my_roles = []
-                    for guild in self.my_roles:
-                        if guild["guild_id"] == data["guild_id"]:
-                            my_roles = guild["roles"]
-                    if (
-                        (data["mention_everyone"] and not suppress_everyone) or
-                        (bool([i for i in my_roles if i in data["mention_roles"]]) and not suppress_roles) or
-                        (self.my_id in [x["id"] for x in mentions]) or
-                        (is_dm and new_message_channel_id in self.dms_vis_id)
-                    ):
-                        if not this_channel or self.new_unreads:   # new_unreads already set in process events for active channel
-                            ping = True
-                        if message_notifications != 2:
-                            self.notify_queue.put((new_message, avatar_id))
-                    elif message_notifications == 0:
+                        my_roles = guild["roles"]
+                if (
+                    (data["mention_everyone"] and not suppress_everyone) or
+                    (bool([i for i in my_roles if i in data["mention_roles"]]) and not suppress_roles) or
+                    (self.my_id in [x["id"] for x in mentions]) or
+                    (is_dm and new_message_channel_id in self.dms_vis_id)
+                ):
+                    if not this_channel or self.new_unreads:   # new_unreads already set in process events for active channel
+                        ping = True
+                    if message_notifications != 2:
                         self.notify_queue.put((new_message, avatar_id))
+                elif message_notifications == 0:
+                    self.notify_queue.put((new_message, avatar_id))
 
-                    # set unseen
-                    if this_channel and self.new_unreads:
-                        last_acked_message_id = self.messages[1]["id"]
-                    else:
-                        last_acked_message_id = 1
-                    update = self.set_channel_unseen(
-                        new_message_channel_id,
-                        data["id"],
-                        ping,
-                        this_channel and not self.new_unreads,
-                        last_acked_message_id,
-                        set_line=not(self.new_unreads and this_channel),
-                        set_line_now=this_channel and not self.new_unreads,
-                    )
-                    if update and this_channel and self.new_unreads:
-                        # when scrolled up and received a message - update chat to add "New" separator
-                        self.update_chat(scroll=False, change_id=data["id"], change_type=3)
+                # set unseen
+                if this_channel and self.new_unreads:
+                    last_acked_message_id = self.messages[1]["id"]
+                else:
+                    last_acked_message_id = 1
+                update = self.set_channel_unseen(
+                    new_message_channel_id,
+                    data["id"],
+                    ping,
+                    this_channel and not self.new_unreads,
+                    last_acked_message_id,
+                    set_line=not(self.new_unreads and this_channel),
+                    set_line_now=this_channel and not self.new_unreads,
+                )
+                if update and this_channel and self.new_unreads:
+                    # when scrolled up and received a message - update chat to add "New" separator
+                    self.update_chat(scroll=False, change_id=data["id"], change_type=3)
+
+
+    def process_msg_events_quick(self, data):
+        """Process irrelevant messages that should only mark channel as unseen"""
+        # data = (content, message_id, channel_id, guild_id)
+        guild_id = data[3]
+        for guild in self.guilds:
+            if guild["guild_id"] == guild_id:
+                return   # checking only guilds to save on cpu
+        self.set_channel_unseen(data[2], data[1], False, False)
 
 
     def process_msg_events_ghost_ping(self, new_message):
@@ -7590,6 +7603,9 @@ class Endcord:
             while self.run:
                 new_message = self.gateway.get_messages()
                 if new_message:
+                    if isinstance(new_message["d"], tuple):   # MESSAGE_CREATE_QUICK
+                        self.process_msg_events_quick(new_message["d"])
+                        continue
                     new_message = self.execute_extensions_methods("on_message_event", new_message, cache=True)[0]
                     new_message_channel_id = new_message["d"]["channel_id"]
                     this_channel = (new_message_channel_id == self.active_channel["channel_id"])
