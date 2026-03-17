@@ -11,7 +11,7 @@ import webbrowser
 logger = logging.getLogger(__name__)
 REPO_OWNER = "sparklost"
 APP_NAME = "endcord"
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 NO_NOTIFY_SOUND_DE = ("kde", "plasma")   # linux desktops without notification sound
 
 # platform specific code

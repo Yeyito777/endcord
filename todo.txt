@@ -1,4 +1,3 @@
-Optimize gateway message events
 Add ability to resize extra window
 
 Voice channels

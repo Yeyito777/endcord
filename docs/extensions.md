@@ -79,7 +79,7 @@ Method names can be searched in `./endcord/app.py` code to see where they are ex
 - `__init__` - on end of app class init
 - `on_main_start` - just before main loop starts
 - `on_main_loop` - first in main loop
-- `on_message_event` - in main loop, when message event is received, before event is processed, has event at input and output
+- `on_message_event` - in main loop, when message event is received, before event is processed; has event at input and output; only "relevant" messages are passed here
 - `on_switch_channel_start` - near start of switch_channel, after self.active_channel is updated
 - `on_switch_channel_end` - near end of switch_channel, before UI is updated
 - `on_reconnect` - near end of reconnect, before UI is updated
@@ -93,8 +93,8 @@ Method names can be searched in `./endcord/app.py` code to see where they are ex
 - `init_bindings` - in load_extensions in tui.py, executed right after initializing all extensions in app.py
 - `on_binding` - at the end of common_keybindings in tui.py, executed only if there are no default bindings matched
 - `on_wait_input` - at the end of wait_input in app.py, executed only if there are no default action codes matched
-- `gateway_event` - at the end of loop in receiver in gateway.py, event data is passed as argument, ready event is skipped (will pass `None`)
-
+- `on_gateway_event` - at the start of loop in receiver in gateway.py, event data is passed as argument
+- `on_message_event_is_irrelevant` - in gateway.py near `elif optext == "MESSAGE_CREATE"` decides if these events are relevant and should be further processed. Has **raw** message event and event optext at input and is expected to return `True` if message is relevant (doesn't override already relevant messages).
 
 ## Adding a command
 1. Add method named `on_execute_command` to extension class, it takes 3 arguments: `command_text` (str), `chat_sel` (int) - line selected in the chat, `tree_sel` (int) -  line selected in the channel tree.

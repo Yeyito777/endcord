@@ -12,7 +12,7 @@ os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"   # fix for http
 from endcord import arg, config, defaults, peripherals, utils
 
 APP_NAME = "endcord"
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 default_config_path = peripherals.config_path
 log_path = peripherals.log_path
 uses_pgcurses = hasattr(curses, "PGCURSES")

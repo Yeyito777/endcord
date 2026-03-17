@@ -440,7 +440,7 @@ class Endcord:
 
 
     def execute_extensions_method_first(self, method_name, *args, cache=False):
-        """Execute specific method for each extension if extension has this method, and chain them, without chaining, stop on first run extension"""
+        """Execute specific method for each extension if extension has this method, and chain them, without chaining, stop on first run extension with positive result"""
         if not self.extensions:
             return None
 
@@ -626,6 +626,7 @@ class Endcord:
                     self.channel_cache[num][3] = True   # mark as invalid
             else:
                 _ = self.channel_cache.pop(num)
+        self.gateway.set_channel_cache(self.channel_cache)
 
 
     def reconnect(self):
@@ -1205,29 +1206,31 @@ class Endcord:
         """Add messages to channel cache"""
         # format: channel_cache = [[channel_id, messages, pinned, *invalid], ...]
         # skipping deleted because they are separately cached
-        if self.limit_channel_cache:
-            pinned = 0
-            for channel in self.channel_cache:
-                if channel[2]:
-                    pinned += 1
-            if pinned >= self.limit_channel_cache:   # skip if all are pinned
-                return
-            messages = [x for x in messages if not x.get("deleted")]
-            if self.get_chat_last_message_id() == self.last_message_id:   # only keep latest messages
-                messages = messages[:self.msg_num]
-            else:
-                messages = []
-            for num, channel in enumerate(self.channel_cache):
-                if channel[0] == channel_id:
-                    self.channel_cache[num] = [channel_id, messages, set_pinned]
-                    break
-            else:
-                self.channel_cache.append([channel_id, messages, set_pinned])
-                if len(self.channel_cache) > self.limit_channel_cache:
-                    for num, channel in enumerate(self.channel_cache):
-                        if not channel[2]:   # dont remove pinned
-                            self.channel_cache.pop(num)
-                            break
+        if not self.limit_channel_cache:
+            return
+        pinned = 0
+        for channel in self.channel_cache:
+            if channel[2]:
+                pinned += 1
+        if pinned >= self.limit_channel_cache:   # skip if all are pinned
+            return
+        messages = [x for x in messages if not x.get("deleted")]
+        if self.get_chat_last_message_id() == self.last_message_id:   # only keep latest messages
+            messages = messages[:self.msg_num]
+        else:
+            messages = []
+        for num, channel in enumerate(self.channel_cache):
+            if channel[0] == channel_id:
+                self.channel_cache[num] = [channel_id, messages, set_pinned]
+                break
+        else:
+            self.channel_cache.append([channel_id, messages, set_pinned])
+            if len(self.channel_cache) > self.limit_channel_cache:
+                for num, channel in enumerate(self.channel_cache):
+                    if not channel[2]:   # dont remove pinned
+                        self.channel_cache.pop(num)
+                        break
+        self.gateway.set_channel_cache(self.channel_cache)
 
 
     def load_from_channel_cache(self, channel_id):
@@ -1278,6 +1281,7 @@ class Endcord:
         if num is not None:
             try:
                 self.channel_cache.pop(num)
+                self.gateway.set_channel_cache(self.channel_cache)
             except IndexError:
                 pass
 

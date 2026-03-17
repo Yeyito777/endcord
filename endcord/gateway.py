@@ -27,7 +27,7 @@ import websocket
 from google.protobuf.json_format import MessageToDict
 
 from endcord import debug, perms, user_settings_pb2
-from endcord.message import prepare_message
+from endcord.message import is_relevant_message, prepare_message
 
 DISCORD_HOST = "discord.com"
 LOCAL_MEMBER_COUNT = 50   # members per guild, CPU-RAM intensive
@@ -107,6 +107,7 @@ class Gateway():
         self.clear_ready_vars()
         self.want_member_list = False
         self.want_summaries = True
+        self.active_channel = None
         self.messages_buffer = []
         self.typing_buffer = []
         self.summaries_buffer = []
@@ -125,6 +126,7 @@ class Gateway():
         self.subscribed_activities = []
         self.subscribed_activities_changed = []
         self.subscribed_channels = []
+        self.channel_cache = []
         self.emojis = []
         self.stickers = []
         self.token_update = None
@@ -188,6 +190,37 @@ class Gateway():
                 _ = method(*args)
         if cache:
             self.extension_cache.append((method_name, methods))
+
+
+    def execute_extensions_method_first(self, method_name, *args, cache=False):
+        """Execute specific method for each extension if extension has this method, and chain them, without chaining, stop on first run extension with positive result"""
+        if not self.extensions:
+            return None
+
+        # try to load from cache (improves performance with many extensions)
+        if cache:
+            result = False
+            for extension_point in self.extension_cache:
+                if extension_point[0] == method_name:
+                    for method in extension_point[1]:
+                        result = method(*args)
+                        if result:
+                            return result
+
+        # try to load method from extensions and add to cache
+        result = False
+        methods = []
+        for extension in self.extensions:
+            method = getattr(extension, method_name, None)
+            if callable(method):
+                if cache:
+                    methods.append(method)
+                result = method(*args)
+                if result:
+                    break
+        if cache:
+            self.extension_cache.append((method_name, methods))
+        return result
 
 
     def thread_guard(self):
@@ -695,16 +728,8 @@ class Gateway():
             # if response.get("t"):
             #     debug.save_json(response, f"{response["t"]}.json", False)
 
-            if opcode == 11:
-                self.heartbeat_received = True
-
-            elif opcode == 10:
-                self.heartbeat_interval = int(response["d"]["heartbeat_interval"])
-
-            elif opcode == 1:
-                self.send({"op": 1, "d": self.sequence})
-
-            elif opcode == 0:
+            # events sorted by frequency and importance
+            if opcode == 0:
                 self.sequence = int(response["s"])
                 optext = response["t"]
                 data = response["d"]
@@ -712,6 +737,8 @@ class Gateway():
                 guild_channels = None
                 role = None
                 guild_roles = None
+                self.execute_extensions_method_nochain("on_gateway_event", data, cache=True)
+
                 if optext == "READY":
                     ready_time_start = time.time()
                     self.resume_gateway_url = data["resume_gateway_url"]
@@ -875,6 +902,7 @@ class Gateway():
                     gc.collect()
 
                 elif optext == "READY_SUPPLEMENTAL":
+                    # received right after READY event
                     for guild in data["merged_presences"]["guilds"]:
                         for user in guild:
                             custom_status = None
@@ -926,106 +954,6 @@ class Gateway():
                     del (guild)   # this is large dict so lets save some memory
                     gc.collect()
 
-                elif optext == "SESSIONS_REPLACE":
-                    # received when new client is connected
-                    activities = []
-                    for activity in data[0]["activities"]:
-                        if activity["type"] in (0, 2):
-                            if "assets" in activity:
-                                small_text = activity["assets"].get("small_text")
-                                large_text = activity["assets"].get("large_text")
-                            else:
-                                small_text = None
-                                large_text = None
-                            activities.append({
-                                "type": activity["type"],
-                                "name": activity["name"],
-                                "state": activity.get("state", ""),
-                                "details": activity.get("details", ""),
-                                "small_text": small_text,
-                                "large_text": large_text,
-                            })
-                    self.my_status = {
-                        "activities": activities,
-                    }
-                    self.status_changed = True
-
-                elif optext == "PRESENCE_UPDATE":
-                    # received when friend/DM user changes presence state (online/rich/custom)
-                    user_id = data["user"]["id"]
-                    custom_status = None
-                    activities = []
-                    for activity in data.get("activities", []):
-                        if activity["type"] == 4:
-                            custom_status = activity.get("state")
-                        elif activity["type"] in (0, 2):
-                            if "assets" in activity:
-                                small_text =  activity["assets"].get("small_text")
-                                large_text =  activity["assets"].get("large_text")
-                            else:
-                                small_text = None
-                                large_text = None
-                            activities.append({
-                                "type": activity["type"],
-                                "name": activity["name"],
-                                "state": activity.get( "state"),
-                                "details": activity.get("details"),
-                                "small_text": small_text,
-                                "large_text": large_text,
-                            })
-                    # select what list of activities to update
-                    if "guild_id" in data:
-                        guild_id = data["guild_id"]
-                        for guild_activities in self.subscribed_activities:
-                            if guild_activities["guild_id"] == guild_id:
-                                selected_activities = guild_activities["members"]
-                                break
-                        else:
-                            self.subscribed_activities.append({
-                                "guild_id": guild_id,
-                                "members": [],
-                            })
-                            selected_activities = self.subscribed_activities[-1]["members"]
-                        self.subscribed_activities_changed.append(guild_id)
-                    else:
-                        selected_activities = self.dm_activities
-                    for num, user in enumerate(selected_activities):
-                        if user["id"] == user_id:
-                            selected_activities[num] = {
-                                "id": user_id,
-                                "status": data.get("status"),   # spacebar_fix - status
-                                "custom_status": custom_status,
-                                "activities": activities,
-                            }
-                            break
-                    else:
-                        selected_activities.append({
-                            "id": data["user"]["id"],
-                            "status": data.get("status"),   # spacebar_fix - get
-                            "custom_status": custom_status,
-                            "activities": activities,
-                        })
-                    self.dm_activities_changed = True
-
-                elif optext == "TYPING_START":
-                    # received when user in currently subscribed guild channel starts typing
-                    if "member" in data:
-                        username = data["member"]["user"]["username"]
-                        global_name = data["member"]["user"].get("global_name")   # spacebar_fix - get
-                        nick = data["member"]["user"].get("nick")
-                    else:
-                        username = None
-                        global_name = None
-                        nick = None
-                    self.typing_buffer.append({
-                        "user_id": data["user_id"],
-                        "timestamp": data["timestamp"],
-                        "channel_id": data["channel_id"],
-                        "username": username,
-                        "global_name": global_name,
-                        "nick": nick,
-                    })
-
                 elif optext == "MESSAGE_CREATE" and "content" in response["d"]:
                     message = response["d"]
                     # saving roles to cache
@@ -1037,6 +965,9 @@ class Gateway():
                             nick=message["member"].get("nick"),
                             nonce=message["channel_id"],
                         )
+                    if not is_relevant_message(optext, message, self.active_channel, self.channel_cache, self.guilds, self.my_id, self.my_roles):
+                        if not self.execute_extensions_method_first("on_message_event_is_irrelevant", message, optext, cache=True):
+                            continue
                     message_done = prepare_message(message)
                     message_done.update({
                         "channel_id": message["channel_id"],
@@ -1053,6 +984,9 @@ class Gateway():
 
                 elif optext == "MESSAGE_UPDATE":
                     message = response["d"]
+                    if not is_relevant_message(optext, message, self.active_channel, self.channel_cache, self.guilds, self.my_id, self.my_roles):
+                        if not self.execute_extensions_method_first("on_message_event_is_irrelevant", message, optext, cache=True):
+                            continue
                     message_done = prepare_message(message)
                     message_done.update({
                         "channel_id": message["channel_id"],
@@ -1137,26 +1071,31 @@ class Gateway():
                         "d": ready_data,
                     })
 
-                elif self.want_summaries and optext == "CONVERSATION_SUMMARY_UPDATE":
-                    # received when new conversation summary is generated
-                    for summary in data["summaries"]:
-                        if summary["type"] == 3:
-                            self.summaries_buffer.append({
-                                "message_id": summary["start_id"],
-                                "channel_id": data["channel_id"],
-                                "guild_id": data.get("guild_id"),
-                                "topic": summary["topic"],
-                                "description": summary["summ_short"],
-                            })
-                        else:
-                            logger.warning(f"Unhandled summary type\n{json.dumps(summary)}")
-
                 elif optext == "MESSAGE_ACK":
                     # received when other client ACKs messages
 
                     self.msg_ack_buffer.append({
                         "message_id": data["message_id"],
                         "channel_id": data["channel_id"],
+                    })
+
+                elif optext == "TYPING_START":
+                    # received when user in currently subscribed guild channel starts typing
+                    if "member" in data:
+                        username = data["member"]["user"]["username"]
+                        global_name = data["member"]["user"].get("global_name")   # spacebar_fix - get
+                        nick = data["member"]["user"].get("nick")
+                    else:
+                        username = None
+                        global_name = None
+                        nick = None
+                    self.typing_buffer.append({
+                        "user_id": data["user_id"],
+                        "timestamp": data["timestamp"],
+                        "channel_id": data["channel_id"],
+                        "username": username,
+                        "global_name": global_name,
+                        "nick": nick,
                     })
 
                 elif optext == "GUILD_MEMBERS_CHUNK":
@@ -1185,33 +1124,6 @@ class Gateway():
                                 )
                                 if data.get("nonce"):
                                     self.roles_changed = data["nonce"]
-
-                elif optext == "THREAD_LIST_SYNC":
-                    threads = []
-                    guild_id = None
-                    for thread in response["d"]["threads"]:
-                        if not guild_id:
-                            guild_id = thread["guild_id"]   # assuming its one event per thread
-                        threads.append({
-                            "id": thread["id"],
-                            "type": thread["type"],
-                            "owner_id": thread["owner_id"],
-                            "name": thread["name"],
-                            "locked": thread["thread_metadata"]["locked"],
-                            "message_count": thread["message_count"],
-                            "timestamp": thread["thread_metadata"].get("create_timestamp", None),
-                            "parent_id": thread["parent_id"],
-                            "suppress_everyone": False,   # no config for threads
-                            "suppress_roles": False,
-                            "message_notifications": None,
-                            "muted": False,   # muted and joined are in READY event
-                            "joined": False,
-                        })
-                    self.threads_buffer.append({
-                        "op": "THREAD_UPDATE",
-                        "guild_id": guild_id,
-                        "threads": threads,
-                    })
 
                 elif self.want_member_list and optext == "GUILD_MEMBER_LIST_UPDATE":
                     guild_id = data["guild_id"]
@@ -1322,6 +1234,124 @@ class Gateway():
                             self.activities[guild_index][1][list_id][0] = int(memlist["index"])
                         self.activities_changed.append(guild_id)
 
+                elif optext == "PRESENCE_UPDATE":
+                    # received when friend/DM user changes presence state (online/rich/custom)
+                    user_id = data["user"]["id"]
+                    custom_status = None
+                    activities = []
+                    for activity in data.get("activities", []):
+                        if activity["type"] == 4:
+                            custom_status = activity.get("state")
+                        elif activity["type"] in (0, 2):
+                            if "assets" in activity:
+                                small_text =  activity["assets"].get("small_text")
+                                large_text =  activity["assets"].get("large_text")
+                            else:
+                                small_text = None
+                                large_text = None
+                            activities.append({
+                                "type": activity["type"],
+                                "name": activity["name"],
+                                "state": activity.get( "state"),
+                                "details": activity.get("details"),
+                                "small_text": small_text,
+                                "large_text": large_text,
+                            })
+                    # select what list of activities to update
+                    if "guild_id" in data:
+                        guild_id = data["guild_id"]
+                        for guild_activities in self.subscribed_activities:
+                            if guild_activities["guild_id"] == guild_id:
+                                selected_activities = guild_activities["members"]
+                                break
+                        else:
+                            self.subscribed_activities.append({
+                                "guild_id": guild_id,
+                                "members": [],
+                            })
+                            selected_activities = self.subscribed_activities[-1]["members"]
+                        self.subscribed_activities_changed.append(guild_id)
+                    else:
+                        selected_activities = self.dm_activities
+                    for num, user in enumerate(selected_activities):
+                        if user["id"] == user_id:
+                            selected_activities[num] = {
+                                "id": user_id,
+                                "status": data.get("status"),   # spacebar_fix - status
+                                "custom_status": custom_status,
+                                "activities": activities,
+                            }
+                            break
+                    else:
+                        selected_activities.append({
+                            "id": data["user"]["id"],
+                            "status": data.get("status"),   # spacebar_fix - get
+                            "custom_status": custom_status,
+                            "activities": activities,
+                        })
+                    self.dm_activities_changed = True
+
+                elif optext == "USER_UPDATE":
+                    self.set_my_user_data(data)
+                    self.my_id = data["id"]
+                    self.premium = data.get("premium_type")
+                    self.user_update = (self.my_user_data, None)
+
+                elif optext == "GUILD_MEMBER_UPDATE":
+                    if data["user"]["id"] == self.my_id:
+                        nick = data.get("nick")
+                        roles_changed = None
+                        for num, guild in enumerate(self.my_roles):
+                            if guild["guild_id"] == data["guild_id"]:
+                                self.my_roles[num]["roles"] = data["roles"]
+                                roles_changed = data["guild_id"]
+                                break
+                        self.user_update = ({
+                            "id": data["user"]["id"],
+                            "nick": nick,
+                        }, roles_changed)
+
+                elif optext == "THREAD_LIST_SYNC":
+                    threads = []
+                    guild_id = None
+                    for thread in response["d"]["threads"]:
+                        if not guild_id:
+                            guild_id = thread["guild_id"]   # assuming its one event per thread
+                        threads.append({
+                            "id": thread["id"],
+                            "type": thread["type"],
+                            "owner_id": thread["owner_id"],
+                            "name": thread["name"],
+                            "locked": thread["thread_metadata"]["locked"],
+                            "message_count": thread["message_count"],
+                            "timestamp": thread["thread_metadata"].get("create_timestamp", None),
+                            "parent_id": thread["parent_id"],
+                            "suppress_everyone": False,   # no config for threads
+                            "suppress_roles": False,
+                            "message_notifications": None,
+                            "muted": False,   # muted and joined are in READY event
+                            "joined": False,
+                        })
+                    self.threads_buffer.append({
+                        "op": "THREAD_UPDATE",
+                        "guild_id": guild_id,
+                        "threads": threads,
+                    })
+
+                elif self.want_summaries and optext == "CONVERSATION_SUMMARY_UPDATE":
+                    # received when new conversation summary is generated
+                    for summary in data["summaries"]:
+                        if summary["type"] == 3:
+                            self.summaries_buffer.append({
+                                "message_id": summary["start_id"],
+                                "channel_id": data["channel_id"],
+                                "guild_id": data.get("guild_id"),
+                                "topic": summary["topic"],
+                                "description": summary["summ_short"],
+                            })
+                        else:
+                            logger.warning(f"Unhandled summary type\n{json.dumps(summary)}")
+
                 elif optext == "USER_SETTINGS_PROTO_UPDATE":
                     if data["partial"] or data["settings"]["type"] != 1:
                         continue
@@ -1378,26 +1408,6 @@ class Gateway():
                                 "muted": dm["muted"],
                             })
                     self.guilds_changed = True
-
-                elif optext == "USER_UPDATE":
-                    self.set_my_user_data(data)
-                    self.my_id = data["id"]
-                    self.premium = data.get("premium_type")
-                    self.user_update = (self.my_user_data, None)
-
-                elif optext == "GUILD_MEMBER_UPDATE":
-                    if data["user"]["id"] == self.my_id:
-                        nick = data.get("nick")
-                        roles_changed = None
-                        for num, guild in enumerate(self.my_roles):
-                            if guild["guild_id"] == data["guild_id"]:
-                                self.my_roles[num]["roles"] = data["roles"]
-                                roles_changed = data["guild_id"]
-                                break
-                        self.user_update = ({
-                            "id": data["user"]["id"],
-                            "nick": nick,
-                        }, roles_changed)
 
                 elif optext == "APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE":
                     self.app_command_autocomplete_resp = response["d"]["choices"]
@@ -1643,7 +1653,32 @@ class Gateway():
                                 self.guild_roles_changed = (guild_id, role["id"])
                                 break
 
-                self.execute_extensions_method_nochain("on_gateway_event", data, cache=True)
+                elif optext == "SESSIONS_REPLACE":
+                    # received when new client is connected
+                    activities = []
+                    for activity in data[0]["activities"]:
+                        if activity["type"] in (0, 2):
+                            if "assets" in activity:
+                                small_text = activity["assets"].get("small_text")
+                                large_text = activity["assets"].get("large_text")
+                            else:
+                                small_text = None
+                                large_text = None
+                            activities.append({
+                                "type": activity["type"],
+                                "name": activity["name"],
+                                "state": activity.get("state", ""),
+                                "details": activity.get("details", ""),
+                                "small_text": small_text,
+                                "large_text": large_text,
+                            })
+                    self.my_status = {
+                        "activities": activities,
+                    }
+                    self.status_changed = True
+
+            elif opcode == 1:
+                self.send({"op": 1, "d": self.sequence})
 
             elif opcode == 7:
                 logger.info("Host requested reconnect")
@@ -1654,6 +1689,12 @@ class Gateway():
                 if response["d"]:
                     logger.info("Session invalidated, reconnecting")
                     break
+
+            elif opcode == 10:
+                self.heartbeat_interval = int(response["d"]["heartbeat_interval"])
+
+            elif opcode == 11:
+                self.heartbeat_received = True
 
         self.state = 0
         logger.debug("Receiver stopped")
@@ -1852,9 +1893,11 @@ class Gateway():
 
     def subscribe(self, channel_id, guild_id):
         """
-        Subscribe to the channel to receive "typing" events from gateway for specified channel,
-        and threads updates, and member presence updates for this guild.
+        Subscribe to the channel to receive "typing" events from gateway for specified channel.
+        And threads updates, and member presence updates for this guild.
+        This channel is considered to be active channel.
         """
+        self.active_channel = channel_id
         if self.my_user_data["bot"]:
             return
         if guild_id:
@@ -2029,6 +2072,11 @@ class Gateway():
     def set_subscribed_channels(self, subscribed_channels):
         """Set currently subscribed channels and so MESSAGE_ events can be faster processed for other channels"""
         self.subscribed_channels = subscribed_channels
+
+
+    def set_channel_cache(self, channel_cache):
+        """Set local channel_cache"""
+        self.channel_cache = channel_cache
 
 
     def set_want_member_list(self, want):
