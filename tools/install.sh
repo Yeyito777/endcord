@@ -88,7 +88,7 @@ if command -v "$BINARY_NAME" &>/dev/null; then
     INSTALLED_VERSION=$("$BINARY_NAME" -v 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')
     if [[ "$INSTALLED_VERSION" == "$VERSION" ]]; then
         echo "$BINARY_NAME is up to date: $INSTALLED_VERSION"
-        #exit 0
+        exit 0
     fi
 fi
 
