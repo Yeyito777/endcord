@@ -168,7 +168,7 @@ def download_gh_repo(owner, repo, save_path, tag=None):
             if os.path.isdir(extracted_dir):
                 for item in os.listdir(extracted_dir):
                     shutil.move(os.path.join(extracted_dir, item), os.path.join(save_path, item))
-                os.rmdir(temp_dir)
+                shutil.rmtree(temp_dir)
 
             return 1
 
