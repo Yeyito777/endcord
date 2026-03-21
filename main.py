@@ -8,6 +8,8 @@ import time
 import traceback
 
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"   # fix for https://github.com/Nuitka/Nuitka/issues/3442
+if sys.platform.startswith("android"):
+    sys.platform = "linux"
 
 from endcord import arg, config, defaults, peripherals, utils
 

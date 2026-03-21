@@ -2265,8 +2265,7 @@ def generate_log(log, colors, max_width):
     chat_format = []
     chat_map = []
     for message in log:
-        chat = split_long_line(message, max_width, 4)
-        chat.extend(chat)
+        chat.extend(split_long_line(message, max_width, 4))
         chat_format.extend([[[colors[0]]]] * len(chat))
         chat_map.extend([None] * len(chat))
     chat = chat[::-1]

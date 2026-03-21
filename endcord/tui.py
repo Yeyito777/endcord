@@ -2425,7 +2425,7 @@ class TUI():
             elif (code := self.common_keybindings(key, command=command, forum=forum)):
                 return self.return_input_code(code)
 
-            elif key == BACKSPACE:
+            elif key == BACKSPACE or key == 127:
                 if self.input_select_start is not None:
                     self.delete_selection()
                     self.input_select_start = None
