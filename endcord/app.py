@@ -4726,15 +4726,16 @@ class Endcord:
                     user_data = self.discord.get_user_guild(user_id, guild_id)
                 else:
                     user_data = self.discord.get_user(user_id)
-            if user_data is None:
-                self.gateway.set_offline()
-                self.update_extra_line("Network error.")
-                return
+                if user_data is None:
+                    self.gateway.set_offline()
+                    self.update_extra_line("Network error.")
+                    return
             if not user_data:
                 self.update_extra_line("No profile information found.")
-                self.viewing_user_data = None
+                self.viewing_user_data = {"id": None, "guild_id": None}
                 return
-        self.viewing_user_data = user_data
+        else:
+            self.viewing_user_data = user_data
 
         # collect other data
         max_w = self.tui.get_dimensions()[2][1]

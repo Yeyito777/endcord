@@ -2417,10 +2417,10 @@ class TUI():
                 if not self.bracket_paste:
                     self.spellcheck()
 
-            elif not self.insert_mode:   # normal mode in vimmode
-                 if not self.switch_tab_modifier and isinstance(key, int) and 49 <= key <= 57:
-                     self.pressed_num_key = key - 48
-                     return self.return_input_code(42)
+            elif not self.insert_mode and not self.switch_tab_modifier and isinstance(key, int) and 49 <= key <= 57:
+                # switch tab key in normal mode in vim mode
+                 self.pressed_num_key = key - 48
+                 return self.return_input_code(42)
 
             elif (code := self.common_keybindings(key, command=command, forum=forum)):
                 return self.return_input_code(code)

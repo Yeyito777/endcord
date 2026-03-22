@@ -157,9 +157,9 @@ def notify_send(title, message, sound="message", image_path=None, custom_sound=N
             include_sound = ["-h", f"string:sound-name:{sound}"]
         if have_termux_notify:
             command = ["termux-notification", "--icon=chat", "--sound", "--channel=1000", "-t", title, "-c", message]
-            if image_path:
-                command.insert(2, "--image-path")
-                command.insert(3, image_path)
+            # if image_path:   # adds it as a large image
+            #     command.insert(2, "--image-path")
+            #     command.insert(3, image_path)
             proc = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
