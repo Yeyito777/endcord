@@ -98,13 +98,13 @@ Method names can be searched in `./endcord/app.py` code to see where they are ex
 
 ## Adding a command
 1. Add method named `on_execute_command` to extension class, it takes 3 arguments: `command_text` (str), `chat_sel` (int) - line selected in the chat, `tree_sel` (int) -  line selected in the channel tree.
-    - Match keyword usually with `cmd_text.startswith("some_text")`, and if needed, use regex to match arguments like channel id, numbers etc.
+    - Match keyword usually with `command_text.startswith("some_text")`, and if needed, use regex to match arguments like channel id, numbers etc.
     - If nothing is matched, return `False`.
-    - If command is matched, execute your code, then return True.
+    - If command is matched, execute your code, then return `True`.
     - Some commands shouldn't be executed when viewing forum, to check if forum is opened use `if self.app.forum:`
     - To get message/forum thread object use: `self.messages[self.lines_to_msg(chat_sel)]`
     - To get metadata for selected object in tree use: `self.tree_metadata[tree_sel]`
-2. Optionally add global constant `EXT_COMMAND_ASSIST` with format: `(("command - descriotion", "command"), (...)...)`. It will be appended to builtin commands.
+2. Optionally add global constant `EXT_COMMAND_ASSIST` with format: `(("command - description", "command"), (...)...)`. It will be appended to builtin commands.
 
 
 ## Adding a binding
@@ -164,9 +164,9 @@ It is possible to add entire library to extension directory, which can be import
 2. It is recommended to set bot intents value in the config `capabilities` option. Default is `50364033` which allows basic chat features.  
 Refer to [this](https://docs.discord.com/developers/events/gateway#gateway-intents) for more info on intents.  
 4. Next step is to register application commands.  
-To register a command, use `app.discord.bot_register_command(command_obj, guild_id=None, json=False)` in the extension.  
+To register a command, use `app.discord.bot_register_command(command_obj, guild_id=None, is_json=False)` in the extension.  
 If `guild_id` is ommited then this will be global command.  
-`command_obj` is python object, but json string can be passed too, just set `json=True`.  
+`command_obj` is python object, but json string can be passed too, just set `is_json=True`.  
 `command_obj` is send as-is without any checks, refer to [this](https://docs.discord.com/developers/interactions/application-commands#application-command-object) for more info on how to write commands.  
 Command is registered only once, registering command with same name will overwrite old one.  
 To update command use `app.discord.bot_update_command(command_obj, command_id, guild_id=None)`.  
@@ -183,12 +183,14 @@ Note that bot must respond within 3 seconds.
 6. Respond to interaction  
 To respond, simply call `app.discord.bot_respond_interaction(response_type, response_obj, interaction_id, interaction_token)`
 Responding to interactions is documented in detail [here](https://docs.discord.food/interactions/receiving-and-responding#responding-to-an-interaction). Response object structure can be found [here](https://docs.discord.food/interactions/receiving-and-responding#interaction-callback-message-data-structure).  
-Be sure to always implement `PONG` response.  
+Be sure to always handle `PING` interaction.  
 7. Long response
 If the response is going to take a while, then first send deferred response (`response_type=5`).  
 And then when final response is ready, edit the original interaction with `app.discord.bot_edit_interaction(response_obj, interaction_token)`.  
 Note that `interaction_token` will expire in 15 minutes.  
 Or delete it with `app.discord.bot_delete_interaction(interaction_token)`.  
+
+Minimal bot implementation is available [here](https://github.com/sparklost/endcord-bot-base) and can be used as a template.  
 
 
 ## Checking extensions

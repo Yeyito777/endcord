@@ -81,6 +81,7 @@ It is built with Python (this [doesnt mean its slow](#note-on-python-performance
 - Experimental windowed mode with tray icon
 - Works in termux, with android notifications
 - Auto endcord and extensions check for updates
+- Run bots, with interactions
 - Lots of easter eggs
 
 

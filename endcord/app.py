@@ -352,6 +352,7 @@ class Endcord:
         # load extensions
         log_text = []
         log_text_invalid = []
+        num_outdated = 0
         for ext_file, ext_name in extensions:
             ext_dir = os.path.dirname(os.path.abspath(ext_file))
             original_path = list(sys.path)
@@ -379,6 +380,7 @@ class Endcord:
                 self.extensions.append(instance)
                 if ext_app_version.split(".")[:2] != version.split(".")[:2]:
                     log_text.append(f"  {ext_name} {ext_version} - WARNING: This extension is built for different endcord version!")
+                    num_outdated += 1
                 else:
                     log_text.append(f"  {ext_name} {ext_version} - OK")
             except Exception as e:
@@ -393,7 +395,7 @@ class Endcord:
             logger.info(f"Loaded {len(self.extensions)} extensions:\n" + "\n".join(log_text))
         if log_text_invalid:
             logger.warning("Invalid extensions:\n" + "\n".join(log_text_invalid))
-        self.chat.insert(0, f"Successfully loaded {len(self.extensions)} extensions")
+        self.chat.insert(0, f"Successfully loaded {len(self.extensions)} extensions ({num_outdated} with mismatched version)")
         self.chat.insert(0, f"Not loaded (invalid) {len(extensions) - len(self.extensions) + len(invalid)} extensions")
         self.tui.update_chat(self.chat, [[[self.colors[0]]]] * len(self.chat))
         self.extension_cache = []

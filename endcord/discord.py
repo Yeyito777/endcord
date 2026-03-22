@@ -1931,14 +1931,14 @@ class Discord():
 
 
     # BOT STUFF
-    def bot_register_command(self, command, guild_id=None, json=False):
+    def bot_register_command(self, command, guild_id=None, is_json=False):
         """
         Register command for this bot. This endpoint works ONLY FOR BOTS.
         command object coresponds to this structure:
         https://docs.discord.com/developers/interactions/application-commands#application-command-object
         To obtain role ids for specific guild, run "dump_roles" endcord command while inside desired guild.
         """
-        if json:
+        if is_json:
             message_data = command
         else:
             message_data = json.dumps(command)
@@ -1949,7 +1949,7 @@ class Discord():
         data, status = self.request("POST", url, message_data, self.header)
         if not status:
             return None
-        if status == 200:
+        if status == 201:
             return True
         log_api_error(data, status, "bot_command")
         return False
@@ -1981,20 +1981,23 @@ class Discord():
         data, status = self.request("DELETE", url, message_data, self.header)
         if not status:
             return None
-        if status == 200:
+        if status == 204:
             return True
         log_api_error(data, status, "bot_command")
         return False
 
 
-    def bot_respond_interaction(self, interaction, interaction_id, interaction_token):
+    def bot_respond_interaction(self, response_type, interaction, interaction_id, interaction_token):
         """Respond to interaction. This endpoint works ONLY FOR BOTS."""
-        message_data = json.dumps(interaction)
+        payload = {"type": response_type}
+        if interaction:
+            payload["data"] = interaction
         url = f"/api/v9/interactions/{interaction_id}/{interaction_token}/callback"
+        message_data = json.dumps(payload)
         data, status = self.request("POST", url, message_data, self.header)
         if not status:
             return None
-        if status == 200:
+        if status == 204:
             return True
         log_api_error(data, status, "bot_interaction")
         return False
@@ -2002,8 +2005,8 @@ class Discord():
 
     def bot_edit_interaction(self, interaction, interaction_token):
         """Edit already sent interaction"""
-        message_data = json.dumps(interaction)
         url = f"/webhooks/{self.my_id}/{interaction_token}/messages/@original"
+        message_data = json.dumps(interaction)
         data, status = self.request("PATCH", url, message_data, self.header)
         if not status:
             return None
