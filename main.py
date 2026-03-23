@@ -14,7 +14,7 @@ if sys.platform.startswith("android"):
 from endcord import arg, config, defaults, peripherals, utils
 
 APP_NAME = "endcord"
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 default_config_path = peripherals.config_path
 log_path = peripherals.log_path
 uses_pgcurses = hasattr(curses, "PGCURSES")

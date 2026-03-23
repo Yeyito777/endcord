@@ -7060,6 +7060,10 @@ class Endcord:
         )
         self.in_call = {"guild_id": guild_id, "channel_id": channel_id}
         for _ in range(100):   # wait for 10s
+            if not self.voice_gateway:
+                self.joining_call = False
+                self.in_call = None
+                return
             if self.voice_gateway.get_state() == 2:
                 break
             time.sleep(0.1)
