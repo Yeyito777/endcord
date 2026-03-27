@@ -1032,22 +1032,24 @@ class ChatGenerator:
         self.color_separator = [colors[5]]
         self.color_code = colors[6]
         self.color_standout = colors[7]
-        self.color_chat_edited = colors_formatted[4][0]
-        self.color_mention_chat_edited = colors_formatted[12][0]
-        self.color_chat_url = colors_formatted[5][0][0]
-        self.color_mention_chat_url = colors_formatted[13][0][0]
-        self.color_spoiler = colors_formatted[6][0][0]
-        self.color_mention_spoiler = colors_formatted[14][0][0]
+        self.color_chat_edited = colors_formatted[5][0]
+        self.color_mention_chat_edited = colors_formatted[14][0]
+        self.color_chat_url = colors_formatted[6][0][0]
+        self.color_mention_chat_url = colors_formatted[15][0][0]
+        self.color_spoiler = colors_formatted[7][0][0]
+        self.color_mention_spoiler = colors_formatted[16][0][0]
 
         # load formatted colors: [[id], [id, start, end]...]
         self.color_message = colors_formatted[0]
         self.color_newline = colors_formatted[1]
         self.color_reply = colors_formatted[2]
         self.color_reactions = colors_formatted[3]
-        self.color_mention_message = colors_formatted[8]
-        self.color_mention_newline = colors_formatted[9]
-        self.color_mention_reply = colors_formatted[10]
-        self.color_mention_reactions = colors_formatted[11]
+        self.color_interaction = colors_formatted[4]
+        self.color_mention_message = colors_formatted[9]
+        self.color_mention_newline = colors_formatted[10]
+        self.color_mention_reply = colors_formatted[11]
+        self.color_mention_reactions = colors_formatted[12]
+        self.color_mention_interaction = colors_formatted[13]
 
         # other
         self.use_global_name = "%global_name" in self.format_message
@@ -1098,6 +1100,11 @@ class ChatGenerator:
             .replace("%username", "\n")
             .replace("%global_name", "\n")
             .replace("%timestamp", self.placeholder_timestamp)
+            .split("\n")[0],
+        )
+        self.pre_name_len_interaction = len(self.format_interaction
+            .replace("%username","\n")
+            .replace("%global_name","\n")
             .split("\n")[0],
         )
         if self.dynamic_name_len:
@@ -1508,9 +1515,9 @@ class ChatGenerator:
             if disable_formatting or reply_color_format == self.color_blocked:
                 chat_format.append([color_base])
             elif mentioned:
-                chat_format.append(shift_formats(self.color_mention_reply, self.pre_name_len, wide_shift))
+                chat_format.append(shift_formats(self.color_mention_interaction, self.pre_name_len_interaction, wide_shift))
             else:
-                chat_format.append(shift_formats(self.color_reply, self.pre_name_len, wide_shift))
+                chat_format.append(shift_formats(self.color_interaction, self.pre_name_len_interaction, wide_shift))
             chat_map.append((num, None, 2, None, None, None, bool(wide)))
 
         # main message
@@ -1594,7 +1601,7 @@ class ChatGenerator:
             else:
                 content += f"[gif sticker] (can be opened): {sticker["name"]}"
         if "app" in message or "webhook" in message:
-            app_string = self.app_string_format.replace("%app", "App" if "app" in message else "Webhook")
+            app_string = self.app_string_format.replace("%app", "App" if "bot" in message else "Webhook")
         else:
             app_string = None
         message_line = lazy_replace(self.format_message, "%username", lambda: normalize_string(message["username"], self.dyn_limit_username, emoji_safe=False, fill=not(self.dynamic_name_len)))
@@ -2723,7 +2730,7 @@ def generate_forum(threads, blocked, max_length, colors, colors_formatted, confi
     forum_thread_format = config["format_forum"]
     forum_format_timestamp = config["format_forum_timestamp"]
     color_blocked = [colors[2]]
-    color_format_forum = colors_formatted[7]   # 15 is unused
+    color_format_forum = colors_formatted[8]   # 17 is unused
     blocked_mode = config["blocked_mode"]
     limit_thread_name = config["limit_thread_name"]
     convert_timezone = config["convert_timezone"]

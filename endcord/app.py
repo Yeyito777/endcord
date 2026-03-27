@@ -7387,7 +7387,7 @@ class Endcord:
         if text:
             if extension_updates and self.config["check_for_updates"] in (2, 4):
                 peripherals.notify_send("Updates available", text)
-            self.update_extra_line(text)
+            self.update_extra_line(text, timed=False)
             logger.info(text)
 
         utils.save_json(last_check, "version.json")

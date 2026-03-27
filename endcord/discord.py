@@ -1949,19 +1949,23 @@ class Discord():
         data, status = self.request("POST", url, message_data, self.header)
         if not status:
             return None
+        if status == 200:
+            return json.loads(data).get("id", True)
         if status == 201:
             return True
         log_api_error(data, status, "bot_command")
         return False
 
 
-    def bot_update_command(self, command, command_id, guild_id=None):
+    def bot_update_command(self, command, command_id, guild_id=None, resource=None):
         """Update command for this bot. This endpoint works ONLY FOR BOTS."""
         message_data = json.dumps(command)
         if guild_id:
             url = f"/api/v9/applications/{self.my_id}/guilds/{guild_id}/commands/{command_id}"
         else:
             url = f"/api/v9/applications/{self.my_id}/commands/{command_id}"
+        if resource:
+            url += "/" + resource
         data, status = self.request("PATCH", url, message_data, self.header)
         if not status:
             return None
@@ -2005,7 +2009,7 @@ class Discord():
 
     def bot_edit_interaction(self, interaction, interaction_token):
         """Edit already sent interaction"""
-        url = f"/webhooks/{self.my_id}/{interaction_token}/messages/@original"
+        url = f"/api/v9/webhooks/{self.my_id}/{interaction_token}/messages/@original"
         message_data = json.dumps(interaction)
         data, status = self.request("PATCH", url, message_data, self.header)
         if not status:
@@ -2019,7 +2023,7 @@ class Discord():
     def bot_delete_interaction(self, interaction_token):
         """Delete already sent interaction"""
         message_data = None
-        url = f"/webhooks/{self.my_id}/{interaction_token}/messages/@original"
+        url = f"/api/v9/webhooks/{self.my_id}/{interaction_token}/messages/@original"
         data, status = self.request("DELETE", url, message_data, self.header)
         if not status:
             return None

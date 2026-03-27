@@ -372,6 +372,8 @@ Every next list has additional `start` and `end`- indexes on a line where color 
     Color format for replied message string. Corresponding to `format_reply`.
 - `color_format_reactions = [[245, -1], [131, -2, 0, 0, 7], [-1, -2, 0, 23, 27]]`  
     Color format for message reactions string. Corresponding to `format_reactions`.
+- `color_format_interaction = [[245, -1], [67, -2, 0, 0, 7], [-1, -2, 0, 21, 27]]`  
+    Color format for message app interaction string. Corresponding to `format_interaction`.
 - `color_format_forum = [[-1, -1], [242, -2, 0, 0, 12], [25, -2, 0, 15, 20]]`  
     Color format for threads in forum. Corresponding to `format_forum`.
 - `color_chat_standout = [153, 234]`  

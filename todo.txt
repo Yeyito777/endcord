@@ -1,5 +1,7 @@
+Implement DAVE
+Fix opus decoding and playing audio
+
 Voice calls
-    fix opus decoding and playing audio
     start recorder thread, record, encode, encrypt, pack, send, stop when leave call, leave call on error
     pause recorder when muted
     send and receive RTCP?
@@ -12,6 +14,18 @@ Voice channels
     join call with goto
     handle multiple speaking at the same time
 
+Add stats command
+    gateway events per hour
+    gateway messages per hour
+    total api requests
+    api response time
+    gateway ping time
+    caches sizes (cached members, deleted messages, summaries, pfpN+MB)
+    message buffer size
+    running time
+Add marker for threads
+Add marker for announcments channel
+Add imageboard and marker
 Add toggle tree binding and command
 Add scrollbar to chat
 

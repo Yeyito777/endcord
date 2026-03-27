@@ -1109,7 +1109,9 @@ class Gateway():
                         for member in data["members"]:
                             name = member.get("nick")
                             if not name:
-                                name = member["user"].get("global_name", member["user"]["username"])   # spacebar_fix - get
+                                name = member["user"].get("global_name")
+                            if not name:
+                                name = member["user"].get("username")
                             self.member_query_results.append({
                                 "id": member["user"]["id"],
                                 "username": member["user"]["username"],
@@ -1993,12 +1995,12 @@ class Gateway():
                 break
 
 
-    def request_members(self, guild_id, members, query=None, limit=None, nonce=None):
+    def request_members(self, guild_id, members, query=None, limit=None, nonce=None, force_query=False):
         """
         Request update chunk for specified members in this guild.
         GUILD_MEMBERS_CHUNK event will be received after this.
         """
-        if query:
+        if query or force_query:
             self.querying_members = True
         if members or query:
             payload = {

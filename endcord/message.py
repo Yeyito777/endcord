@@ -222,6 +222,8 @@ def prepare_message(message):
             "nick": None,
             "command": message["interaction"].get("name", "Unknown command"),
         }
+        if not message["content"] and message["flags"] & 128:   # flag 7
+            message["content"] = "Thinking..."
     else:
         interaction = None
 
