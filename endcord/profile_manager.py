@@ -861,7 +861,7 @@ def text_prompt(screen, description_text, prompts, init=None, mask=None, prompt_
                 proceed = True
                 break
 
-        elif key == BACKSPACE:
+        elif key == BACKSPACE or key == 127:
             texts[selected] = texts[selected][:-1]
 
         if key == curses.KEY_UP:

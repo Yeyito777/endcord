@@ -1930,6 +1930,9 @@ class Endcord:
                     self.tui.draw_extra_window(extra_title, extra_body, select=True)
                     self.extra_window_open = True
                     self.extra_bkp = (self.tui.extra_window_title, self.tui.extra_window_body)
+                    if self.vim_mode:
+                        self.tui.set_vim_insert(True)
+                        self.update_status_line()
                 else:
                     self.tui.instant_assist = False
                     self.close_extra_window()
@@ -1937,6 +1940,9 @@ class Endcord:
                     self.command = False
                     self.update_status_line()
                     self.stop_assist()
+                    if self.vim_mode:
+                        self.tui.set_vim_insert(False)
+                        self.update_status_line()
 
             # toggle tab
             elif action == 41:
@@ -2223,6 +2229,9 @@ class Endcord:
                         self.restore_input_text = (input_text, "search")
                     elif self.command:
                         self.restore_input_text = (input_text, "command")
+                        if self.vim_mode:
+                            self.tui.set_vim_insert(False)
+                            self.update_status_line()
                     elif self.assist_type == 6:   # app command
                         self.reset_states()
                         self.tui.set_input_index(0)
@@ -2342,6 +2351,7 @@ class Endcord:
                     )
 
                 elif self.deleting and input_text.lower() == "y":
+                    logger.info(self.deleting)
                     self.put_to_message_sender(self.discord.delete_message,
                         channel_id=self.active_channel["channel_id"],
                         message_id=self.deleting,
@@ -2420,6 +2430,9 @@ class Endcord:
                     self.assist_word = None
                     self.add_to_command_history(input_text)
                     self.command = False
+                    if self.vim_mode:
+                        self.tui.set_vim_insert(False)
+                        self.update_status_line()
                     continue
 
                 elif self.reacting["id"]:
@@ -5464,6 +5477,9 @@ class Endcord:
                     self.add_to_command_history(input_text)
                     self.command = False
                     self.assist_word = None
+                    if self.vim_mode:
+                        self.tui.set_vim_insert(False)
+                        self.update_status_line()
                     return "", 1000000   # means its command execution and should restore text from store
                 new_text = self.assist_found[index][1] + " "
                 new_pos = len(new_text)
@@ -6065,6 +6081,8 @@ class Endcord:
 
     def lines_to_msg(self, line_index, space=False):
         """Convert line index from formatted chat to message index"""
+        if not self.chat_map:
+            return None
         line_index = max(min(line_index, len(self.chat_map) - 1), 0)
         line_map = self.chat_map[line_index]
         if line_map and line_map[0] is not None:   # has timestamp range
@@ -6748,11 +6766,7 @@ class Endcord:
 
     def process_msg_events_quick(self, data):
         """Process irrelevant messages that should only mark channel as unseen"""
-        # data = (content, message_id, channel_id, guild_id)
-        guild_id = data[3]
-        for guild in self.guilds:
-            if guild["guild_id"] == guild_id:
-                return   # checking only guilds to save on cpu
+        # data = (content, message_id, channel_id)
         self.set_channel_unseen(data[2], data[1], False, False)
 
 
@@ -7402,6 +7416,8 @@ class Endcord:
         # wait for gateway and load data from it
         while not self.gateway.get_ready():
             if self.gateway.error:
+                if self.gateway.error.startswith("Failed"):
+                    sys.exit(self.gateway.error)
                 logger.fatal(f"Gateway error: \n {self.gateway.error}")
                 sys.exit(self.gateway.error + ERROR_TEXT)
             time.sleep(0.2)
@@ -8016,6 +8032,8 @@ class Endcord:
 
             # check gateway for errors
             if self.gateway.error:
+                if self.gateway.error.startswith("Failed"):
+                    sys.exit(self.gateway.error)
                 logger.fatal(f"Gateway error: \n {self.gateway.error}")
                 sys.exit(self.gateway.error + ERROR_TEXT)
 

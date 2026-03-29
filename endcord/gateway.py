@@ -138,6 +138,7 @@ class Gateway():
         self.querying_members = False
         self.member_query_results = []
         self.resumable = False
+        self.consecutive_errors = 0
         if self.bot:
             self.interactions_buffer = []
         threading.Thread(target=self.thread_guard, daemon=True, args=()).start()
@@ -328,6 +329,8 @@ class Gateway():
         """
         try:
             function(*args)
+        except SystemExit as e:
+            self.error = str(e)
         except BaseException as e:
             self.error = "".join(traceback.format_exception(e))
 
@@ -706,6 +709,11 @@ class Gateway():
                 reason = data[2:].decode("utf-8", "replace")
                 if status not in (1000, 1001):
                     logger.warning(f"Gateway status code: {status}, reason: {reason}")
+                    if self.consecutive_errors >= 2:
+                        self.disconnect_ws()
+                        logger.error(f"Failed to connect to gateway, error: {status} - {reason}")
+                        sys.exit(f"Failed to connect to gateway, error: {status} - {reason}")
+                    self.consecutive_errors += 1
                 self.resumable = status in (4000, 4009)
                 break
             try:
@@ -743,6 +751,7 @@ class Gateway():
 
                 if optext == "READY":
                     ready_time_start = time.time()
+                    self.consecutive_errors = 0
                     self.resume_gateway_url = data["resume_gateway_url"]
                     self.session_id = data["session_id"]
                     self.clear_ready_vars()
@@ -970,7 +979,7 @@ class Gateway():
                     if not is_relevant_message(optext, message, self.active_channel, self.channel_cache, self.guilds, self.my_id, self.my_roles) and not self.execute_extensions_method_first("on_message_event_is_irrelevant", message, optext, cache=True):
                         self.messages_buffer.append({
                             "op": "MESSAGE_CREATE_QUICK",
-                            "d": (message["content"], message["id"], message["guild_id"], message["channel_id"]),   # just to set channel as unread in tree
+                            "d": (message["content"], message["id"], message["channel_id"]),   # just to set channel as unread in tree
                         })
                     message_done = prepare_message(message)
                     message_done.update({

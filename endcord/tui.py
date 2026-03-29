@@ -867,6 +867,12 @@ class TUI():
         self.draw_extra_window(self.extra_window_title, self.extra_window_body, select=self.extra_select, reset_scroll=False)
 
 
+    def set_vim_insert(self, value):
+        """Set insert mode for vim mode"""
+        if self.vim_mode:
+            self.insert_mode = value
+
+
     def set_fun(self, fun_lvl):
         """Set fun level"""
         if fun_lvl != self.fun and self.fun_thread:
@@ -1739,6 +1745,8 @@ class TUI():
         if self.win_member_list:
             # safely clean emojis
             with self.lock:
+                if not self.win_member_list:
+                    return
                 h, w = self.win_member_list.getmaxyx()
                 for y in range(h):
                     self.win_member_list.insstr(y, 0, " " * w, curses.color_pair(1))
@@ -2354,21 +2362,16 @@ class TUI():
                 self.input_index += 1
                 self.add_to_delta_store("\n")
 
-            elif key in self.KEYBINDINGS_SEND_MESSAGE:   # ENTER
-                if self.vim_mode and self.insert_mode:
-                    self.input_buffer = self.input_buffer[:self.input_index] + "\n" + self.input_buffer[self.input_index:]
-                    self.input_index += 1
-                    self.show_cursor()
-                    self.spellcheck()
-                else:
-                    if forum:
-                        self.input_index = 0
-                        self.input_line_index = 0
-                        self.cursor_pos = 0
-                        self.draw_input_line()
-                    self.cursor_on = True
-                    self.input_select_start = None
-                    return self.return_input_code(0)
+            elif key in self.KEYBINDINGS_SEND_MESSAGE:
+                logger.info("OK")
+                if forum:
+                    self.input_index = 0
+                    self.input_line_index = 0
+                    self.cursor_pos = 0
+                    self.draw_input_line()
+                self.cursor_on = True
+                self.input_select_start = None
+                return self.return_input_code(0)
 
             if isinstance(key, str):
                 if len(key) > 1 and key.startswith(self.switch_tab_modifier):   # switching tab with Binding+Num

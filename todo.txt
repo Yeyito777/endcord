@@ -23,7 +23,6 @@ Add stats command
     caches sizes (cached members, deleted messages, summaries, pfpN+MB)
     message buffer size
     running time
-Add marker for threads
 Add marker for announcments channel
 Add imageboard and marker
 Add toggle tree binding and command
