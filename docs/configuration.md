@@ -440,6 +440,7 @@ Note: everything after `%content` may be pushed to newline.
 - `%tabs` - all tabs formatted with `format_tabs` then joined with `tabs_separator`
 - `%slowmode` - `Slowmode: hh:mm:ss` if slowmode is enabled, otherwise its hidden
 - `%afk` - `[AFK]` while afk status is being sent from this client
+- `%app_name` - default is `endcord`, can be changed with `ENDCORD_APP_NAME` environment variable
 - `%vim_mode` - `[--INSERT--]` or `[--NORMAL--]` when `vim_mode` is ON
 
 ### format_rich

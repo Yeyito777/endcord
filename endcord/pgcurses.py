@@ -41,7 +41,11 @@ WINDOW_SIZE = (900, 600)
 MAXIMIZED = False
 FONT_SIZE = 12
 FONT_NAME = None
-APP_NAME = "Endcord"
+try:
+    import __main__
+    APP_NAME = __main__.APP_NAME   # set in main.py
+except (AttributeError, NameError):
+    APP_NAME = "endcord"
 REPEAT_DELAY = 400
 REPEAT_INTERVAL = 25
 CTRL_V_PASTE = False   # use Ctrl+V instead Ctrl+Shift+V to paste

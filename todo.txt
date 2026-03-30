@@ -27,6 +27,7 @@ Add marker for announcments channel
 Add imageboard and marker
 Add toggle tree binding and command
 Add scrollbar to chat
+Add ability to switch profile without closing
 
 after fixing https://github.com/python/cpython/issues/119138
     Add colors for status sign in selected and active dm in tree

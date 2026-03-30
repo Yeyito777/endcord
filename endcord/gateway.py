@@ -1191,61 +1191,64 @@ class Gateway():
                         elif memlist["op"] == "DELETE":
                             try:
                                 del self.activities[guild_index][1][list_id][1][memlist["index"]]
-                            except (IndexError, NameError):
+                            except (IndexError, NameError,KeyError):
                                 pass
                         elif memlist["op"] in ("UPDATE", "INSERT"):
-                            custom_status = None
-                            if list_id not in self.activities[guild_index][1]:
-                                self.activities[guild_index][1][list_id] = [0, []]   # [last_index, members]
-                            if "group" in memlist["item"]:
-                                # group can only be inserted
-                                self.activities[guild_index][1][list_id][1].insert(memlist["index"], {"group": memlist["item"]["group"]["id"]})
-                                if len(self.activities[guild_index][1][list_id][1]) > 100:
-                                    self.activities[guild_index][1][list_id][1].pop(-1)
-                                self.activities_changed.append(guild_id)
+                            try:
+                                custom_status = None
+                                if list_id not in self.activities[guild_index][1]:
+                                    self.activities[guild_index][1][list_id] = [0, []]   # [last_index, members]
+                                if "group" in memlist["item"]:
+                                    # group can only be inserted
+                                    self.activities[guild_index][1][list_id][1].insert(memlist["index"], {"group": memlist["item"]["group"]["id"]})
+                                    if len(self.activities[guild_index][1][list_id][1]) > 100:
+                                        self.activities[guild_index][1][list_id][1].pop(-1)
+                                    self.activities_changed.append(guild_id)
+                                    self.activities[guild_index][1][list_id][0] = int(memlist["index"])
+                                    continue
+                                member_data = memlist["item"]["member"]
+                                activities = []
+                                for activity in member_data["presence"]["activities"]:
+                                    if activity["type"] == 4:
+                                        custom_status = activity.get("state", "")
+                                    elif activity["type"] in (0, 2):
+                                        assets = activity.get("assets", {})
+                                        activities.append({
+                                            "type": activity["type"],
+                                            "name": activity["name"],
+                                            "state": activity.get("state"),
+                                            "details": activity.get("details"),
+                                            "small_text": assets.get("small_text"),
+                                            "large_text": assets.get("large_text"),
+                                        })
+                                member_id = member_data["user"]["id"]
+                                ready_data = {
+                                    "id": member_id,
+                                    "username": member_data["user"]["username"],
+                                    "global_name": member_data["user"].get("global_name"),   # spacebar_fix - get
+                                    "nick": member_data["nick"],
+                                    "roles": member_data["roles"],
+                                    "status": member_data["presence"]["status"],
+                                    # "custom_status": custom_status,
+                                    # "activities": activities,
+                                }
+                                if memlist["op"] == "UPDATE":
+                                    try:
+                                        if self.activities[guild_index][1][list_id][1][memlist["index"]].get("id") == member_id:
+                                            self.activities[guild_index][1][list_id][1][memlist["index"]].update(ready_data)
+                                        else:   # failsafe
+                                            for num, member in enumerate(self.activities[guild_index][1][list_id][1]):
+                                                if member.get("id") == member_id:
+                                                    self.activities[guild_index][1][list_id][1][num].update(ready_data)
+                                    except IndexError:
+                                        pass
+                                else:   # INSERT
+                                    self.activities[guild_index][1][list_id][1].insert(memlist["index"], ready_data)
+                                    if len(self.activities[guild_index][1][list_id][1]) > 100:   # lets have some limits
+                                        self.activities[guild_index][1][list_id][1].pop(-1)
                                 self.activities[guild_index][1][list_id][0] = int(memlist["index"])
-                                continue
-                            member_data = memlist["item"]["member"]
-                            activities = []
-                            for activity in member_data["presence"]["activities"]:
-                                if activity["type"] == 4:
-                                    custom_status = activity.get("state", "")
-                                elif activity["type"] in (0, 2):
-                                    assets = activity.get("assets", {})
-                                    activities.append({
-                                        "type": activity["type"],
-                                        "name": activity["name"],
-                                        "state": activity.get("state"),
-                                        "details": activity.get("details"),
-                                        "small_text": assets.get("small_text"),
-                                        "large_text": assets.get("large_text"),
-                                    })
-                            member_id = member_data["user"]["id"]
-                            ready_data = {
-                                "id": member_id,
-                                "username": member_data["user"]["username"],
-                                "global_name": member_data["user"].get("global_name"),   # spacebar_fix - get
-                                "nick": member_data["nick"],
-                                "roles": member_data["roles"],
-                                "status": member_data["presence"]["status"],
-                                # "custom_status": custom_status,
-                                # "activities": activities,
-                            }
-                            if memlist["op"] == "UPDATE":
-                                try:
-                                    if self.activities[guild_index][1][list_id][1][memlist["index"]].get("id") == member_id:
-                                        self.activities[guild_index][1][list_id][1][memlist["index"]].update(ready_data)
-                                    else:   # failsafe
-                                        for num, member in enumerate(self.activities[guild_index][1][list_id][1]):
-                                            if member.get("id") == member_id:
-                                                self.activities[guild_index][1][list_id][1][num].update(ready_data)
-                                except IndexError:
-                                    pass
-                            else:   # INSERT
-                                self.activities[guild_index][1][list_id][1].insert(memlist["index"], ready_data)
-                                if len(self.activities[guild_index][1][list_id][1]) > 100:   # lets have some limits
-                                    self.activities[guild_index][1][list_id][1].pop(-1)
-                            self.activities[guild_index][1][list_id][0] = int(memlist["index"])
+                            except (IndexError, KeyError):
+                                pass
                         self.activities_changed.append(guild_id)
 
                 elif optext == "PRESENCE_UPDATE":

@@ -100,7 +100,7 @@ theme = {
     "format_status_line_r": "%vim_mode %slowmode",
     "format_title_line_l": " %server: %channel",
     "format_title_line_r": "%tabs",
-    "format_title_tree": " endcord  %task",
+    "format_title_tree": " %app_name  %task",
     "format_rich": "%type %name - %state - %details",
     "format_tabs": "%num - %name",
     "format_prompt": "[%channel] > ",

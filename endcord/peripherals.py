@@ -10,7 +10,12 @@ import webbrowser
 
 logger = logging.getLogger(__name__)
 REPO_OWNER = "sparklost"
-APP_NAME = "endcord"
+try:
+    import __main__
+    APP_NAME = __main__.APP_NAME   # set in main.py
+    logger.info(APP_NAME)
+except (AttributeError, NameError):
+    APP_NAME = "endcord"
 VERSION = "1.4.1"
 NO_NOTIFY_SOUND_DE = ("kde", "plasma")   # linux desktops without notification sound
 

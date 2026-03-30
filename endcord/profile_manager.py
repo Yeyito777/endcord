@@ -17,7 +17,12 @@ if sys.platform == "win32":
 else:
     BACKSPACE = curses.KEY_BACKSPACE
 
-APP_NAME = "endcord"
+try:
+    import __main__
+    APP_NAME = __main__.APP_NAME   # set in main.py
+except (AttributeError, NameError):
+    APP_NAME = "endcord"
+
 PART_HINT = "Enter to confirm, Esc to go back."
 FULL_HINT = PART_HINT[:-1] + ", Up/Down to select."
 CHECK_LOG = " Check log for more info."

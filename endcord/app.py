@@ -2351,7 +2351,6 @@ class Endcord:
                     )
 
                 elif self.deleting and input_text.lower() == "y":
-                    logger.info(self.deleting)
                     self.put_to_message_sender(self.discord.delete_message,
                         channel_id=self.active_channel["channel_id"],
                         message_id=self.deleting,
@@ -6516,7 +6515,7 @@ class Endcord:
                     if "pending" in message and message["id"] == nonce:
                         self.messages.pop(num)
                         change_amount -=1
-                        self.update_chat_noui(change_id=num-1, change_type=2)   # -1 because new message is inserted
+                        self.update_chat_noui(change_id=num-1, change_type=20)   # -1 because new message is inserted
                         break
             # limit chat size
             if len(self.messages) > self.limit_chat_buffer:

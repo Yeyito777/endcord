@@ -2363,7 +2363,6 @@ class TUI():
                 self.add_to_delta_store("\n")
 
             elif key in self.KEYBINDINGS_SEND_MESSAGE:
-                logger.info("OK")
                 if forum:
                     self.input_index = 0
                     self.input_line_index = 0

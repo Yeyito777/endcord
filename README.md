@@ -463,6 +463,9 @@ All channel and server names, topics, descriptions are replaced. All channel and
 ### Note on Python performance misconceptions
 Python is slower than languages like C or Rust, but in this use case it does not affect performance. Endcord is event-driven and network-bound not CPU-bound, so Python’s overhead is negligible (significantly reduced when built with nuitka). And all CPU-critical components are implemented in Cython. Python was chosen because it enables rapid development.
 
+### Running multiple endcord instances
+To run multiple endcord instances at the same time, while keeping them completely separated, run endcord with `ENDCORD_APP_NAME` environment variable set to something else. This will change "endcord" everywhere: in config and cache paths, notifications, keyring...
+
 ### Some role colors are wrong
 This is an [issue](https://github.com/python/cpython/issues/119138) with cpython ncurses API. It is ignoring color pairs with ID larger than 255. This means only 255 color pairs can actually be used. Only role colors can reach this limit, because they are initialized last.
 This will be updated in endcord when cpython issue is resolved.
