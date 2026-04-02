@@ -297,7 +297,7 @@ class Gateway():
         try:
             # subscribe works differently in v10
             connection.request("GET", "/api/v9/gateway")
-        except (socket.gaierror, TimeoutError):
+        except (socket.gaierror, TimeoutError, ConnectionResetError):
             connection.close()
             logger.warning("No internet connection. Exiting...")
             sys.exit("No internet connection. Exiting...")
@@ -761,6 +761,8 @@ class Gateway():
                     self.set_my_user_data(data["user"])
                     self.my_id = data["user"]["id"]
                     self.premium = data["user"].get("premium_type")   # 0 - none, 1 - classic, 2 - full, 3 - basic
+                    if self.premium is None:
+                        self.premium = 0
                     if data.get("auth_token"):
                         self.token_update = data["auth_token"]
                     # guilds and channels
@@ -1855,7 +1857,7 @@ class Gateway():
                 self.heartbeat_thread.start()
             self.state = 1
             logger.info("Connection established")
-        except websocket._exceptions.WebSocketAddressException:
+        except (websocket._exceptions.WebSocketAddressException, socket.gaierror, TimeoutError, ConnectionResetError):
             if not self.wait:   # if not running from wait_oline
                 logger.warning("No internet connection")
                 self.ws.close()

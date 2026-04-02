@@ -2264,6 +2264,7 @@ class TUI():
             self.input_index = 0
             self.input_line_index = 0
             self.cursor_pos = 0
+            self.assist_start = -1
         if init_text:
             self.input_buffer = init_text
             if not keep_cursor:

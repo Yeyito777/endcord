@@ -1,4 +1,4 @@
-Implement DAVE
+Fix DAVE implementation
 Fix opus decoding and playing audio
 
 Voice calls
@@ -23,8 +23,7 @@ Add stats command
     caches sizes (cached members, deleted messages, summaries, pfpN+MB)
     message buffer size
     running time
-Add marker for announcments channel
-Add imageboard and marker
+Add imageboards
 Add toggle tree binding and command
 Add scrollbar to chat
 Add ability to switch profile without closing
@@ -43,3 +42,8 @@ Add option to select individual message
 Fix per-channel member list
 Video calls
 Localization
+
+
+Exntensions:
+endcord-termux-rich
+endcord-undelete

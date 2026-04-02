@@ -185,6 +185,14 @@ class Gateway():
         self.identify()
 
 
+    def send_binary(self, opcode, payload):
+        """Send a binary websocket message to the gateway"""
+        try:
+            self.ws.send_binary(struct.pack(">B", opcode) + payload)
+        except websocket._exceptions.WebSocketException:
+            self.disconnect()
+
+
     def send(self, request):
         """Send data to gateway"""
         try:
@@ -205,7 +213,7 @@ class Gateway():
                 OSError,
             ):
                 break
-            if ws_opcode == 8 and len(data) >= 2:
+            if ws_opcode == 8 and len(data) >= 2:   # error
                 if not data:
                     break
                 code = struct.unpack("!H", data[0:2])[0]
@@ -214,23 +222,27 @@ class Gateway():
                     break
                 logger.warning(f"Gateway error code: {code}, reason: {reason}")
                 break
-            try:
+            elif ws_opcode == 2:   # binary data
+                sequence, opcode = struct.unpack(">HB", data[:3])
+                response = data[3:]
+                self.sequence = max(sequence, self.sequence)
+            elif ws_opcode == 1:
                 try:
-                    logger.info((data, ws_opcode))
-                    response = json.loads(data)
-                    opcode = response["op"]
-                except ValueError:
-                    response = None
-                    opcode = None
-                    continue
-            except Exception as e:
-                logger.warning(f"Receiver error: {e}")
-                break
+                    try:
+                        response = json.loads(data)
+                        opcode = response["op"]
+                    except ValueError:
+                        response = None
+                        opcode = None
+                        continue
+                except Exception as e:
+                    logger.warning(f"Receiver error: {e}")
+                    break
+                self.sequence = max(response.get("seq", 0), self.sequence)
+
             # debug_events
             # from endcord import debug
             # debug.save_json(response, f"event_{opcode}.json", False)
-
-            self.sequence = max(response.get("seq", 0), self.sequence)
 
             if opcode == 6:
                 self.heartbeat_received = True
@@ -335,10 +347,16 @@ class Gateway():
                     self.send_dave_mls_key_package()
 
             elif opcode == 25:  # DAVE_MLS_EXTERNAL_SENDER_PACKAGE
-                self.dave_session.set_external_sender(bytes(response["d"]["package"]))
+                self.dave_session.set_external_sender(response)
                 self.send_dave_mls_key_package()
 
-            elif opcode == 27:  # DAVE_MLS_PROPOSAL
+            elif opcode == 27:  # DAVE_MLS_PROPOSALS
+                op_type = davey.ProposalsOperationType(struct.unpack_from(">B", response, 0)[0])
+                proposals = response[1:]
+                result = self.dave_session.process_proposals(op_type, proposals)
+                if result is not None:
+                    self.send_commit_welcome(result.commit, result.welcome)
+
                 data = response["d"]
                 op_type = davey.ProposalsOperationType(data["proposal_type"])
                 proposals_bytes = bytes(data["proposals"])
@@ -352,22 +370,24 @@ class Gateway():
                     self.send_dave_mls_commit_welcome(result.commit, result.welcome)
 
             elif opcode == 29:  # DAVE_MLS_ANNOUNCE_COMMIT_TRANSITION
-                data = response["d"]
+                transition_id = struct.unpack_from(">H", response, 0)[0]
+                commit = response[2:]
                 try:
-                    self.dave_session.process_commit(bytes(data["commit"]))
-                    self.send_dave_ready_for_transition(data["transition_id"])
+                    self.dave_session.process_commit(commit)
+                    self.send_ready_for_transition(transition_id)
                 except Exception as e:
-                    logger.debug(f"Invalid welcome: {e}")
+                    logger.warning(f"Invalid commit: {e}")
                     self.send_invalid_commit_welcome(transition_id)
                     self.send_key_package()
 
             elif opcode == 30:  # DAVE_MLS_WELCOME
-                data = response["d"]
+                transition_id = struct.unpack_from(">H", response, 0)[0]
+                welcome = response[2:]
                 try:
-                    self.dave_session.process_welcome(bytes(data["welcome"]))
-                    self.send_dave_ready_for_transition(data["transition_id"])
+                    self.dave_session.process_welcome(welcome)
+                    self.send_ready_for_transition(transition_id)
                 except Exception as e:
-                    logger.debug(f"Invalid welcome: {e}")
+                    logger.warning(f"Invalid welcome: {e}")
                     self.send_invalid_commit_welcome(transition_id)
                     self.send_key_package()
 
@@ -471,22 +491,16 @@ class Gateway():
     def send_dave_mls_key_package(self):
         """Send DAVE_MLS_KEY_PACKAGE event"""
         key_package = self.dave_session.get_serialized_key_package()
-        self.send({
-            "op": 26,
-            "d": {"key_package": list(key_package)},
-        })
+        self.send_binary(26, key_package)
         logger.debug("Sent MLS key package (op 26)")
 
 
     def send_dave_mls_commit_welcome(self, commit, welcome):
         """Send DAVE_MLS_COMMIT_WELCOME"""
-        payload = {"commit": list(commit)}
+        payload = commit
         if welcome is not None:
-            payload["welcome"] = list(welcome)
-        self.send({
-            "op": 28,
-            "d": payload,
-        })
+            payload += welcome
+        self.send_binary(28, payload)
         logger.debug("Sent MLS commit/welcome (op 28)")
 
 
@@ -571,6 +585,7 @@ class VoiceHandler:
         self.dave_session = gateway.dave_session
         self.ssrc_to_userid = {}
         self.audio_queue = queue.Queue(maxsize=10)
+        self.passthrough = False
         self.opus_decoder = av.codec.CodecContext.create("opus", "r")
 
 
@@ -612,7 +627,7 @@ class VoiceHandler:
 
 
     def execute_transition(self, dave_session):
-        """After execute_transition, stop passthrough on send side"""
+        """Stop passthrough after execute_transition"""
         self.passthrough = False
         # keep accepting packets from old epoch for up to 10 seconds
         dave_session.set_passthrough_mode(False, transition_expiry=10)
@@ -685,7 +700,7 @@ class VoiceHandler:
                         continue
 
                 except Exception as e:
-                    logger.error(f"Decryption failed for mode: {self.mode}. Error: {e}")
+                    logger.error(f"Decryption failed; mode: {self.mode}; error: {e}")
                     continue
 
                 # decode opus and add to audio queue

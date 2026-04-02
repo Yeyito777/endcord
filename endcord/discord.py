@@ -1656,14 +1656,15 @@ class Discord():
         if status == 200:
             data = json.loads(data)
             return bool(data["ringable"])
+        log_api_error(data, status, "check_ring")
         return False
 
 
     def send_ring(self, channel_id, recipients):
         """Ring private channel recipients if there is an active call"""
-        if not self.check_ring(channel_id):
-            logger.warning("Cant ring a call in this private channel recipients")
-            return
+        # if not self.check_ring(channel_id):   # keeps giving error code 50109
+        #     logger.warning("Cant ring a call in this private channel recipients")
+        #     return
 
         message_data = json.dumps({
             "recipients": recipients,

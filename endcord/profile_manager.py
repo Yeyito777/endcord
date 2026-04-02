@@ -814,6 +814,7 @@ def text_prompt(screen, description_text, prompts, init=None, mask=None, prompt_
 
     _, w = screen.getmaxyx()
     base_y = get_prompt_y(w, description_text, prompt_idx_back)
+    input_index = len(texts[selected])
 
     def draw():
         for i, prompt in enumerate(prompts):
@@ -827,10 +828,10 @@ def text_prompt(screen, description_text, prompts, init=None, mask=None, prompt_
                 line = prompt + text[:w - prompt_len]
             line += " " * (w - len(line) - 1)
             if i == selected:
-                attr = curses.color_pair(1) | curses.A_STANDOUT
+                screen.addstr(y, 1, line, curses.color_pair(1) | curses.A_STANDOUT)
+                screen.addch(y, input_index + prompt_len - 1, line[input_index + prompt_len - 2], curses.color_pair(2))
             else:
-                attr = curses.color_pair(2)   # gray
-            screen.addstr(y, 1, line, attr)
+                screen.addstr(y, 1, line, curses.color_pair(2))    # gray
         screen.refresh()
 
     draw()
@@ -867,19 +868,30 @@ def text_prompt(screen, description_text, prompts, init=None, mask=None, prompt_
                 break
 
         elif key == BACKSPACE or key == 127:
-            texts[selected] = texts[selected][:-1]
+            texts[selected] = texts[selected][:input_index-1] + texts[selected][input_index:]
+            input_index -= 1
 
         if key == curses.KEY_UP:
             selected = max(0, selected - 1)
+            input_index = len(texts[selected])
 
         elif key == curses.KEY_DOWN:
             selected = min(len(prompts) - 1, selected + 1)
+            input_index = len(texts[selected])
+
+        elif key == curses.KEY_LEFT and input_index > 0:
+            input_index -= 1
+
+        elif key == curses.KEY_RIGHT and input_index < len(texts[selected]):
+            input_index += 1
 
         elif isinstance(key, int) and 32 <= key <= 126:
-            texts[selected] += chr(key)
+            texts[selected] = texts[selected][:input_index] + chr(key) + texts[selected][input_index:]
+            input_index += 1
 
         elif key == 9:  # TAB
             selected = (selected + 1) % len(prompts)
+            input_index = len(texts[selected])
 
         draw()
 
