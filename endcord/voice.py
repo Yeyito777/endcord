@@ -24,7 +24,7 @@ except (AssertionError, RuntimeError):
 
 DISCORD_HOST = "discord.com"
 LOCAL_MEMBER_COUNT = 50   # members per guild, CPU-RAM intensive
-VOICE_FLAGS = 3   # CLIPS_ENABLED and ALLOW_VOICE_RECORDING
+VOICE_FLAGS = 2   # ALLOW_VOICE_RECORDING
 UDP_TIMEOUT = 10
 logger = logging.getLogger(__name__)
 CODECS = [
@@ -38,6 +38,7 @@ CODECS = [
     # {"name":"VP9", "type":"video", "priority":4000, "payload_type":107, "rtx_payload_type":108, "encode":False, "decode":True},
 ]
 rtp_unpacker = struct.Struct(">xxHII")
+OPUS_SILENCE = bytes([0xF8, 0xFF, 0xFE])
 
 
 def strip_rtp_extension(payload):
@@ -187,6 +188,7 @@ class Gateway():
 
     def send_binary(self, opcode, payload):
         """Send a binary websocket message to the gateway"""
+        logger.info(("BINARY SEND", opcode, payload))
         try:
             self.ws.send_binary(struct.pack(">B", opcode) + payload)
         except websocket._exceptions.WebSocketException:
@@ -195,6 +197,7 @@ class Gateway():
 
     def send(self, request):
         """Send data to gateway"""
+        logger.info(("SEND", request))
         try:
             self.ws.send(json.dumps(request))
         except websocket._exceptions.WebSocketException:
@@ -243,6 +246,7 @@ class Gateway():
             # debug_events
             # from endcord import debug
             # debug.save_json(response, f"event_{opcode}.json", False)
+            logger.info(("RECEIVE", opcode, response))
 
             if opcode == 6:
                 self.heartbeat_received = True
@@ -333,7 +337,7 @@ class Gateway():
             elif opcode == 22:  # DAVE_PROTOCOL_EXECUTE_TRANSITION
                 # switch to new epoch key ratchet
                 if self.voice_handler:
-                    self.voice_handler.execute_transition(self.dave_session)
+                    self.voice_handler.execute_transition()
 
             elif opcode == 24:  # DAVE_PROTOCOL_PREPARE_EPOCH
                 data = response["d"]
@@ -351,22 +355,11 @@ class Gateway():
                 self.send_dave_mls_key_package()
 
             elif opcode == 27:  # DAVE_MLS_PROPOSALS
-                op_type = davey.ProposalsOperationType(struct.unpack_from(">B", response, 0)[0])
+                op_type_int = struct.unpack_from(">B", response, 0)[0]
+                op_type = davey.ProposalsOperationType.append if op_type_int == 0 else davey.ProposalsOperationType.revoke
                 proposals = response[1:]
                 result = self.dave_session.process_proposals(op_type, proposals)
                 if result is not None:
-                    self.send_commit_welcome(result.commit, result.welcome)
-
-                data = response["d"]
-                op_type = davey.ProposalsOperationType(data["proposal_type"])
-                proposals_bytes = bytes(data["proposals"])
-                expected_ids = [int(uid) for uid in data.get("expected_user_ids", [])]
-                result = self.dave_session.process_proposals(
-                    op_type,
-                    proposals_bytes,
-                    expected_ids if expected_ids else None,
-                )
-                if result is not None:   # if this is committing member, send commit
                     self.send_dave_mls_commit_welcome(result.commit, result.welcome)
 
             elif opcode == 29:  # DAVE_MLS_ANNOUNCE_COMMIT_TRANSITION
@@ -374,10 +367,11 @@ class Gateway():
                 commit = response[2:]
                 try:
                     self.dave_session.process_commit(commit)
-                    self.send_ready_for_transition(transition_id)
+                    self.dave_session.set_passthrough_mode(True, transition_expiry=10)
+                    self.send_dave_ready_for_transition(transition_id)
                 except Exception as e:
                     logger.warning(f"Invalid commit: {e}")
-                    self.send_invalid_commit_welcome(transition_id)
+                    self.send_dave_mls_invalid_commit_welcome(transition_id)
                     self.send_key_package()
 
             elif opcode == 30:  # DAVE_MLS_WELCOME
@@ -385,10 +379,10 @@ class Gateway():
                 welcome = response[2:]
                 try:
                     self.dave_session.process_welcome(welcome)
-                    self.send_ready_for_transition(transition_id)
+                    self.dave_session.set_passthrough_mode(True, transition_expiry=10)
                 except Exception as e:
                     logger.warning(f"Invalid welcome: {e}")
-                    self.send_invalid_commit_welcome(transition_id)
+                    self.send_dave_mls_invalid_commit_welcome(transition_id)
                     self.send_key_package()
 
         logger.debug("Receiver stopped")
@@ -626,11 +620,9 @@ class VoiceHandler:
             self.dave_session.set_passthrough_mode(enabled)
 
 
-    def execute_transition(self, dave_session):
+    def execute_transition(self):
         """Stop passthrough after execute_transition"""
         self.passthrough = False
-        # keep accepting packets from old epoch for up to 10 seconds
-        dave_session.set_passthrough_mode(False, transition_expiry=10)
 
 
     def receiver_loop(self):
@@ -680,16 +672,27 @@ class VoiceHandler:
                         continue
                     payload = strip_rtp_extension(payload)
 
+                    if payload[:3] == OPUS_SILENCE:   # silence packets
+                        logger.info("SILENCE")
+                        av_packet = av.packet.Packet(payload)
+                        frames = self.opus_decoder.decode(av_packet)
+                        for frame in frames:
+                            self.audio_queue.put(frame)
+                        continue
+
                     # DAVE
                     if self.dave_session.ready:
                         user_id = self.ssrc_to_userid.get(ssrc)
                         if user_id is not None:
+                            if self.dave_session.can_passthrough(user_id):
+                                pass
                             try:
                                 payload = self.dave_session.decrypt(
                                     user_id,
                                     davey.MediaType.audio,
                                     payload,
                                 )
+                                logger.info("SUCCESS")
                             except Exception as e:
                                 logger.error(f"DAVE decryption failed: {e}")
                                 continue

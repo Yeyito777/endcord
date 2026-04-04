@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 try:
     import __main__
     APP_NAME = __main__.APP_NAME   # set in main.py
-    logger.info(APP_NAME)
 except (AttributeError, NameError):
     APP_NAME = "endcord"
 
