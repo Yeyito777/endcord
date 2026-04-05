@@ -1,6 +1,8 @@
+Add copyright headers
+
+
 Fix DAVE implementation
 Fix opus decoding and playing audio
-Add copyright headers
 
 Voice calls
     start recorder thread, record, encode, encrypt, pack, send, stop when leave call, leave call on error
