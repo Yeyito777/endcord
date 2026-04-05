@@ -1,6 +1,3 @@
-Add copyright headers
-
-
 Fix DAVE implementation
 Fix opus decoding and playing audio
 
@@ -17,7 +14,6 @@ Voice channels
     join call with goto
     handle multiple speaking at the same time
 
-Add imageboards
 Add toggle_tree binding and command
 
 after fixing https://github.com/python/cpython/issues/119138

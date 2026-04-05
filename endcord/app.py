@@ -764,7 +764,7 @@ class Endcord:
         this_guild = self.select_current_channels(parent_hint)
 
         # generate forum
-        if self.current_channel.get("type") == 15:
+        if self.current_channel.get("type") in (15, 16):
             forum = True
             self.forum_end = False
             self.forum_old = []
@@ -949,7 +949,7 @@ class Endcord:
         self.update_tree()
 
         # save state (exclude threads)
-        if self.config["remember_state"] and self.current_channel.get("type") not in (11, 12, 15):
+        if self.config["remember_state"] and self.current_channel.get("type") not in (11, 12, 15, 16):
             self.state["last_guild_id"] = guild_id
             self.state["last_channel_id"] = channel_id
         utils.save_json(self.state, f"state_{self.profiles["selected"]}.json")
@@ -3747,7 +3747,7 @@ class Endcord:
                 target_types = (-1, )   # server
             else:   # channel
                 current_target_id = self.active_channel["channel_id"]
-                target_types = (0, 1, 3, 15)   # channel, dm, group, forum
+                target_types = (0, 1, 3, 15, 16)   # channel, dm, group, forum, imageboard
             if not current_target_id:
                 current_target_id = 0
             if cmd_args["value"]:   # previous
@@ -3817,7 +3817,7 @@ class Endcord:
             text += f"Gateway ping time: {gateway_ping_time} s\n"
             text += f"Message buffer size: {messages_buffer_size}\n"
             text += f"Total API requests: {total_requests}\n"
-            text += f"API response time: {api_ping_time}\n"
+            text += f"API response time: {api_ping_time} s\n"
             text += "Caches sizes:\n"
             text += f"  Cached members: {members_count}\n"
             text += f"  Deleted messages: {deleted_msg_count}\n"

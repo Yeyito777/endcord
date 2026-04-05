@@ -3092,7 +3092,7 @@ def generate_tree(dms, guilds, threads, read_state, guild_folders, activities, c
         # separately sort channels in their categories
         bare_channels = []
         for channel in guild["channels"]:
-            if channel["type"] in (0, 5, 15):
+            if channel["type"] in (0, 5, 15, 16):
                 # find this channel threads, if any
                 for channel_th in threads_guild:
                     if channel_th["channel_id"] == channel["id"]:
@@ -3129,7 +3129,7 @@ def generate_tree(dms, guilds, threads, read_state, guild_folders, activities, c
                             "ping": mentioned_ch,
                             "active": active,
                             "threads": threads_ch,
-                            "forum": channel["type"] == 15,
+                            "forum": channel["type"] in (15, 16),
                         })
                         break
                 else:

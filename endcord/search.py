@@ -1,3 +1,8 @@
+# Copyright (C) 2025-2026 SparkLost
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3.
+
 import heapq
 import importlib.util
 import re
@@ -81,14 +86,15 @@ def search_channels_guild(channels, query, limit=50, score_cutoff=15):
     for channel in channels:
         # skip categories (type 4)
         if channel["permitted"] and channel["type"] != 4:
+            formatted = channel["name"]
             if channel["type"] == 2:
-                formatted = f"{channel["name"]} - voice"
+                formatted += " - voice"
             elif channel["type"] in (11, 12):
-                formatted = f"{channel["name"]} - thread"
+                formatted += " - thread"
             elif channel["type"] == 15:
-                formatted = f"{channel["name"]} - forum"
-            else:
-                formatted = channel["name"]
+                formatted += " - forum"
+            elif channel["type"] == 16:
+                formatted += " - imageboard"
 
             score = fuzzy_match_score(query, formatted)
             if score < worst_score:
@@ -148,16 +154,18 @@ def search_channels_all(guilds, dms, query, full_input, recent=None, limit=50, s
                 elif not query:
                     continue
             if channel["permitted"]:
+                formatted = channel["name"]
                 if channel["type"] == 2:
-                    formatted = f"{channel["name"]} - voice ({guild["name"]})"
+                    formatted += " - voice"
                 elif full and channel["type"] == 4:
-                    formatted = f"{channel["name"]} - category ({guild["name"]})"
+                    formatted += " - category"
                 elif channel["type"] in (11, 12):
-                    formatted = f"{channel["name"]} - thread ({guild["name"]})"
+                    formatted += " - thread"
                 elif channel["type"] == 15:
-                    formatted = f"{channel["name"]} - forum ({guild["name"]})"
-                else:
-                    formatted = f"{channel["name"]} ({guild["name"]})"
+                    formatted += " - forum"
+                elif channel["type"] == 16:
+                    formatted += " - imageboard"
+                formatted += f" ({guild["name"]})"
                 score = fuzzy_match_score(query, formatted) + bonus_score
                 if score < worst_score:
                     continue

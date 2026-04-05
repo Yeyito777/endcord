@@ -427,7 +427,7 @@ class Gateway():
                     break
             else:
                 continue
-            if channel_g["type"] in (0, 2, 4, 5, 15):
+            if channel_g["type"] in (0, 2, 4, 5, 15, 16):
                 flags = int(channel.get("flags", 0))
                 hidden = not perms.decode_flag(flags, 12)   # manually hidden
             else:
@@ -472,7 +472,7 @@ class Gateway():
 
         # channels
         for channel in guild["channels"]:
-            if channel["type"] in (0, 2, 4, 5, 15) and not self.bot:
+            if channel["type"] in (0, 2, 4, 5, 15, 16) and not self.bot:
                 hidden = True   # hidden by default
             else:
                 hidden = False
@@ -797,7 +797,7 @@ class Gateway():
                         if not guild.get("unavailable"):
                             # build list of last messages from each channel
                             for channel in guild["channels"]:
-                                if channel["type"] != 15:   # skip forums
+                                if channel["type"] not in (15, 16):   # skip forums
                                     last_messages.append({
                                         "message_id": channel.get("last_message_id", 0),   # really last message id
                                         "channel_id": channel["id"],
@@ -1426,7 +1426,7 @@ class Gateway():
                         })
                         # reset all to defaults
                         for channel_num, channel in enumerate(self.guilds[guild_num]["channels"]):
-                            if channel["type"] in (0, 2, 4, 5, 15):
+                            if channel["type"] in (0, 2, 4, 5, 15, 16):
                                 flags = int(channel.get("flags", 0))
                                 hidden = not perms.decode_flag(flags, 12)   # manually hidden
                             else:
@@ -2172,6 +2172,7 @@ class Gateway():
         5 - announcements
         11/12 - thread
         15 - forum (contains only threads)
+        16 - imageborad
         message_notifications:
         0 - all messages
         1 - only mentions
