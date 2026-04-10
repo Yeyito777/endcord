@@ -221,7 +221,7 @@ keybindings = {
     "browser": 15,   # Ctrl+O
     "copy_msg": 12,   # Ctrl+L
     "view_media": 22,   # Ctrl+V
-    "spoil": "ALT+116",   # Alt+T
+    "spoil": "ALT+115",   # Alt+S
     "search": 6,   # Ctrl+F
     "search_gif": "ALT+102",   # Alt+F
     "profile_info": "ALT+112",   # Alt+P

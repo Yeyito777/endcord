@@ -252,7 +252,7 @@ class TUI():
         self.have_title_tree = bool(config["format_title_tree"])
         vline = config["tree_drop_down_vline"][0]
         self.vline = acs_map.get(vline, vline)
-        self.tree_width = config["tree_width"]
+        self.tree_width = max(config["tree_width"], 10)
         self.extra_window_h = config["extra_window_height"]   # load initial value
         self.blink_cursor_on = config["cursor_on_time"]
         self.blink_cursor_off = config["cursor_off_time"]
@@ -471,19 +471,9 @@ class TUI():
                 self.tree_width + 1,
             )
             prompt_hwyx = (1, len(self.prompt), h - 1, self.tree_width + 1)
-            input_line_hwyx = (
-                1,
-                w - (self.tree_width + 1) - len(self.prompt),
-                h - 1,
-                self.tree_width + len(self.prompt) + 1,
-            )
+            input_line_hwyx = (1, w - (self.tree_width + 1) - len(self.prompt), h - 1, self.tree_width + len(self.prompt) + 1)
             status_line_hwyx = (1, w - (self.tree_width + 1), h - 2, self.tree_width + 1)
-            tree_hwyx = (
-                h - self.have_title_tree,
-                self.tree_width,
-                self.have_title,
-                0,
-            )
+            tree_hwyx = (h - self.have_title_tree, self.tree_width, self.have_title, 0)
             self.win_chat = self.screen.derwin(*chat_hwyx)
             self.win_prompt = self.screen.derwin(*prompt_hwyx)
             self.win_input_line = self.screen.derwin(*input_line_hwyx)
@@ -543,21 +533,16 @@ class TUI():
             self.tree_width + 3,
         )
         win_prompt_input_line = (1, w - self.tree_width - 4, h - 2, self.tree_width + 3)
-        tree_hwyx = (
-            h - self.have_title_tree - 1,
-            self.tree_width,
-            self.have_title,
-            1,
-        )
+        tree_hwyx = (h - self.have_title_tree - 1, self.tree_width, self.have_title, 1)
 
         # re-init areas
         if not redraw_only:
-            prompt_hwyx = (1, len(self.prompt), h - 2, self.tree_width + 3)
+            prompt_hwyx = (1, len(self.prompt), h - 2, self.tree_width + 2)
             input_line_hwyx = (
                 1,
-                w - (self.tree_width + 2) - len(self.prompt) - 2,
+                w - (self.tree_width + 1) - len(self.prompt) - 2,
                 h - 2,
-                self.tree_width + len(self.prompt) + 3,
+                self.tree_width + len(self.prompt) + 2,
             )
             status_line_hwyx = (1, w - (self.tree_width + 2), h - 3, self.tree_width + 2)
             self.win_chat = self.screen.derwin(*chat_hwyx)
@@ -1179,7 +1164,8 @@ class TUI():
             title_txt_r = self.title_txt_r
             if title_txt_r:
                 title_txt_r = title_txt_r[:w - 2*self.bordered]
-            if self.title_txt_r:
+
+            if self.title_txt_r and len(self.title_txt_l) < w - 2:
                 title_txt_r = replace_spaces_dash(trim_with_dash(title_txt_r, dash=self.bordered))
                 title_txt_l = replace_spaces_dash(trim_with_dash(self.title_txt_l, dash=self.bordered))
                 if self.bordered:
@@ -1198,12 +1184,14 @@ class TUI():
                 title_format = self.title_txt_l_format
                 for tab in self.title_txt_r_format:
                     title_format.append((tab[0], tab[1] + text_l_len, min(tab[2] + text_l_len, w-1)))
+
             elif self.bordered:
                 title_txt_l = replace_spaces_dash(trim_with_dash(self.title_txt_l[:w - 1 - 2*self.bordered]))
                 title_line = self.corner_ul + title_txt_l + "─" * (w - len(title_txt_l) - 2) + self.corner_ur
                 title_format = []
                 for item in self.title_txt_l_format:
                     title_format.append((item[0], item[1] + 1, min(item[2] + 1, w-1)))
+
             else:
                 title_txt_l = self.title_txt_l[:w - 1 - 2*self.bordered]
                 title_line = title_txt_l + " " * (w - len(title_txt_l))

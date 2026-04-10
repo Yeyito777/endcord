@@ -22,11 +22,12 @@ try:
 except (AttributeError, NameError):
     APP_NAME = "endcord"
 
-DAY_MS = 24*60*60*1000
+DAY_MS = 24 * 60 * 60 * 1000
 DISCORD_EPOCH_MS = 1420070400000
 TREE_EMOJI_REPLACE = "▮"
 TIME_DIVS = [1, 60, 3600, 86400, 2678400, 31190400]
 TIME_UNITS = ["second", "minute", "hour", "day", "month", "year"]
+SPLIT_AFTER_TIME = 10 * 60
 
 match_emoji = re.compile(r"(?<!\\):[^:\s]+:")
 match_d_emoji = re.compile(r"<(a?):([a-zA-Z0-9_]+):(\d+)>")
@@ -141,6 +142,11 @@ def generate_timestamp(discord_time, format_string, timezone=True):
     if timezone:
         time_obj = time_obj.astimezone()
     return datetime.strftime(time_obj, format_string)
+
+
+def unix_from_snowflake(snowflake):
+    """Convert discord snowflake to unix time"""
+    return int(((int(snowflake) >> 22) + DISCORD_EPOCH_MS) / 1000)
 
 
 def timestamp_from_snowflake(snowflake, format_string, timezone=True):
@@ -1385,7 +1391,6 @@ class ChatGenerator:
                 chat_map.append(None)
                 return None, None, None   # to not break message-to-chat conversion
 
-        # try:
         if next_msg:
             # unread message separator
             if not self.have_unseen_messages_line and self.date_separator and last_seen_msg and (num == num_messages-1 or (int(next_msg["id"]) <= int(last_seen_msg))):
@@ -1426,13 +1431,11 @@ class ChatGenerator:
                     chat_format.append([color_base])
                     chat_map.append(None)
 
-            # empty separator between messages not from same sender
-            elif self.message_spacing and message["user_id"] != next_msg["user_id"]:
+            # empty separator between messages not from same sender of after period of time
+            elif self.message_spacing and (message["user_id"] != next_msg["user_id"] or unix_from_snowflake(message["id"]) - unix_from_snowflake(next_msg["id"]) > SPLIT_AFTER_TIME):
                 chat.append(" " * max_length)
                 chat_format.append([color_base])
                 chat_map.append(None)
-        # except IndexError:
-        #     pass
 
         # replied message line
         if message["referenced_message"]:

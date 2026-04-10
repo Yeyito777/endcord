@@ -37,7 +37,7 @@
 - `Ctrl+O` * - Open selected link in browser
 - `Ctrl+L` - Copy selected message to clipboard
 - `Ctrl+V` * - View selected attachment (image, gif, video, audio) in media player
-- `Alt+T` - Reveal one spoiler in selected messages
+- `Alt+S` - Reveal one spoiler in selected messages
 - `Ctrl+F` - Search messages in current server
 - `Alt+F` - Search gifs
 - `Alt+P` - View user profile (selected message)

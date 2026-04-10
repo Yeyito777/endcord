@@ -147,6 +147,8 @@ class Gateway():
         self.consecutive_errors = 0
         self.gateway_events_per_h = 0
         self.gateway_msg_per_h = 0
+        self.last_gateway_events_per_h = 0
+        self.last_gateway_msg_per_h = 0
         self.gateway_ping_time = 0
         if self.bot:
             self.interactions_buffer = []
@@ -254,6 +256,8 @@ class Gateway():
         while self.run:
             if int(time.time()) > last_rotation + 3600:
                 last_rotation = int(time.time())
+                self.last_gateway_events_per_h = self.gateway_events_per_h
+                self.last_gateway_msg_per_h = self.gateway_msg_per_h
                 self.gateway_events_per_h = 0
                 self.gateway_msg_per_h = 0
             time.sleep(30)
@@ -2345,7 +2349,12 @@ class Gateway():
         members_count = 0
         for guild in self.member_roles:
             members_count += len(guild["members"])
-        return self.gateway_events_per_h, self.gateway_msg_per_h, self.gateway_ping_time, len(self.messages_buffer), members_count
+        return (
+            self.last_gateway_events_per_h or self.gateway_events_per_h,
+            self.last_gateway_msg_per_h or self.gateway_msg_per_h,
+            self.gateway_ping_time,
+            len(self.messages_buffer), members_count,
+        )
 
 
     # all following "get_*" work like this:

@@ -107,10 +107,14 @@ def search_channels_guild(channels, query, limit=50, score_cutoff=15):
     return sorted(results, key=lambda x: x[2], reverse=True)
 
 
-def search_channels_all(guilds, dms, query, full_input, recent=None, limit=50, score_cutoff=15):
+def search_channels_all(guilds, dms, query, full_input, recent=None, read_state=None, limit=50, score_cutoff=15):
     """Search for guilds/categories/channels/DMs"""
     results = []
     worst_score = score_cutoff
+    if read_state:
+        mentions = {ch_id for ch_id, channel in read_state.items() if channel.get("mentions")}
+    else:
+        mentions = set()
 
     for dm in dms:
         bonus_score = 0
@@ -119,6 +123,11 @@ def search_channels_all(guilds, dms, query, full_input, recent=None, limit=50, s
                 bonus_score = score_cutoff
             elif not query:
                 continue
+        if mentions and dm["id"] in mentions:
+            if bonus_score:
+                bonus_score += 1
+            else:
+                bonus_score = score_cutoff
         formatted = f"{dm["name"]} (DM)"
         score = fuzzy_match_score(query, formatted) * 4 + bonus_score   # dms get more score so they are on top
         if score < worst_score * 4:
@@ -153,6 +162,11 @@ def search_channels_all(guilds, dms, query, full_input, recent=None, limit=50, s
                     bonus_score = score_cutoff
                 elif not query:
                     continue
+            if mentions and dm["id"] in mentions:
+                if bonus_score:
+                    bonus_score += 1
+                else:
+                    bonus_score = score_cutoff
             if channel["permitted"]:
                 formatted = channel["name"]
                 if channel["type"] == 2:

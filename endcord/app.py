@@ -253,6 +253,9 @@ class Endcord:
             self.fun = 2 if (10, 25) <= today <= (11, 8) else self.fun
             self.fun = 3 if today >= (12, 25) or today <= (1, 8) else self.fun
             self.fun = 4 if today == (4, 1) else self.fun
+        if self.gateway.bot:
+            global MSG_MIN
+            MSG_MIN = 0
         self.colors = self.tui.init_colors(self.colors)
         self.colors_formatted = self.tui.init_colors_formatted(self.colors_formatted, self.default_msg_alt_color)
         self.tui.update_chat(self.chat, [[[self.colors[0]]]] * len(self.chat))
@@ -1862,6 +1865,10 @@ class Endcord:
                     continue
                 if "pending" not in self.messages[msg_index]:
                     self.copy_msg_url(msg_index)
+
+            # UNUSED
+            # elif action == 32:
+            #     pass
 
             # cycle status
             elif action == 33:
@@ -5367,6 +5374,7 @@ class Endcord:
                     assist_word[5:],
                     self.tui.input_buffer,
                     recent=self.state["recent_channels"][:-1],   # exclude current channel
+                    read_state=self.read_state,
                     limit=self.assist_limit,
                     score_cutoff=self.assist_score_cutoff,
                 )
