@@ -1420,9 +1420,13 @@ class Endcord:
                 input_text, chat_sel, tree_sel, action = self.tui.wait_input(self.prompt, init_text=init_text, reset=False, keep_cursor=True, forum=self.forum, press=forced_binding)
                 ephemeral = True   # stop loop
             elif self.restore_input_text[1] == "prompt":
+                prompt_text = self.restore_input_text[0]
                 self.stop_extra_window()
                 self.restore_input_text = (None, "after prompt")
-                input_text, chat_sel, tree_sel, action = self.tui.wait_input(self.prompt, forum=self.forum)
+                if prompt_text:
+                    input_text, chat_sel, tree_sel, action = self.tui.wait_input(self.custom_prompt(prompt_text), forum=self.forum)
+                else:
+                    input_text, chat_sel, tree_sel, action = self.tui.wait_input(self.prompt, forum=self.forum)
             elif self.restore_input_text[1] in ("standard", "standard extra", "standard insert"):
                 keep_cursor = True
                 if self.restore_input_text[1] == "standard" and not self.restore_input_text[0].startswith("/"):
@@ -1522,7 +1526,7 @@ class Endcord:
                     self.ignore_typing = True
                     self.deleting = message["id"]
                     self.add_to_store(self.active_channel["channel_id"], input_text)
-                    self.restore_input_text = (None, "prompt")
+                    self.restore_input_text = ("DELETE?", "prompt")
                     self.update_status_line()
 
             # toggle mention ping
@@ -1565,12 +1569,12 @@ class Endcord:
                 else:
                     self.ignore_typing = True
                     self.downloading_file = {
-                        "urls": selected_urls,
+                        "urls": selected_urls or urls,
                         "web": False,
                         "open": False,
                     }
                     self.add_to_store(self.active_channel["channel_id"], input_text)
-                    self.restore_input_text = (None, "prompt")
+                    self.restore_input_text = ("SELECT", "prompt")
                     self.update_status_line()
 
             # open link in browser
@@ -1589,12 +1593,12 @@ class Endcord:
                 elif selected_urls:
                     self.ignore_typing = True
                     self.downloading_file = {
-                        "urls": selected_urls,
+                        "urls": selected_urls or urls,
                         "web": True,
                         "open": False,
                     }
                     self.add_to_store(self.active_channel["channel_id"], input_text)
-                    self.restore_input_text = (None, "prompt")
+                    self.restore_input_text = ("SELECT", "prompt")
                     self.update_status_line()
                 else:
                     self.restore_input_text = (input_text, "standard")
@@ -1620,12 +1624,12 @@ class Endcord:
                 elif selected_urls:
                     self.ignore_typing = True
                     self.downloading_file = {
-                        "urls": selected_urls,
+                        "urls": selected_urls or urls,
                         "web": False,
                         "open": True,
                     }
                     self.add_to_store(self.active_channel["channel_id"], input_text)
-                    self.restore_input_text = (None, "prompt")
+                    self.restore_input_text = ("SELECT", "prompt")
                     self.update_status_line()
                 else:
                     self.restore_input_text = (input_text, "standard")
@@ -1633,7 +1637,7 @@ class Endcord:
             # cancel all downloads and uploads
             elif action == 11:
                 self.add_to_store(self.active_channel["channel_id"], input_text)
-                self.restore_input_text = (None, "prompt")
+                self.restore_input_text = ("CANCEL?", "prompt")
                 self.reset_states()
                 self.ignore_typing = True
                 self.cancel_download = True
@@ -1920,7 +1924,7 @@ class Endcord:
                 multiple = self.do_view_reactions(msg_index)
                 if multiple:
                     self.add_to_store(self.active_channel["channel_id"], input_text)
-                    self.restore_input_text = (None, "prompt")
+                    self.restore_input_text = ("SELECT", "prompt")
 
             # command
             elif action == 38:
@@ -2771,11 +2775,12 @@ class Endcord:
                 else:
                     self.ignore_typing = True
                     self.downloading_file = {
-                        "urls": selected_urls,
+                        "urls": selected_urls or urls,
                         "web": False,
                         "open": False,
                     }
-                    self.restore_input_text = (None, "prompt")
+                    self.restore_input_text = ("SELECT", "prompt")
+                    self.update_status_line()
                     reset = False
 
         elif cmd_type in (5, 64):   # OPEN_LINK and COPY_LINK
@@ -2798,11 +2803,12 @@ class Endcord:
                 else:
                     self.ignore_typing = True
                     self.downloading_file = {
-                        "urls": selected_urls,
+                        "urls": selected_urls or urls,
                         "web": 1 if cmd_type == 5 else 2,
                         "open": False,
                     }
-                    self.restore_input_text = (None, "prompt")
+                    self.restore_input_text = ("SELECT", "prompt")
+                    self.update_status_line()
                     reset = False
 
         elif cmd_type == 6:   # PLAY
@@ -2826,11 +2832,12 @@ class Endcord:
             else:
                 self.ignore_typing = True
                 self.downloading_file = {
-                    "urls": selected_urls,
+                    "urls": selected_urls or urls,
                     "web": False,
                     "open": True,
                 }
-                self.restore_input_text = (None, "prompt")
+                self.restore_input_text = ("SELECT", "prompt")
+                self.update_status_line()
                 reset = False
 
         elif cmd_type == 7:   # CANCEL
@@ -2911,7 +2918,6 @@ class Endcord:
             else:
                 channel_sel = self.tree_metadata[tree_sel]["type"]
             if channel_sel and channel_sel["type"] not in (-1, 1, 11, 12):
-                self.restore_input_text = (None, "prompt")
                 reset = False
                 self.reset_states()
                 self.ignore_typing = True
@@ -2921,6 +2927,8 @@ class Endcord:
                     "channel_id": channel_sel["id"],
                     "guild_id": guild_id,
                 }
+                self.restore_input_text = ("SELECT", "prompt")
+                self.update_status_line()
 
         elif cmd_type == 16:   # SEARCH
             search_text = cmd_args.get("search_text", None)
@@ -3000,8 +3008,8 @@ class Endcord:
             elif channels:
                 self.ignore_typing = True
                 self.going_to_ch = channels
+                self.restore_input_text = ("SELECT", "prompt")
                 self.update_status_line()
-                self.restore_input_text = (None, "prompt")
                 reset = False
 
         elif cmd_type == 20:   # STATUS
@@ -3052,7 +3060,9 @@ class Endcord:
                 return
             multiple = self.do_view_reactions(msg_index)
             if multiple:
-                self.restore_input_text = (None, "prompt")
+                reset = False
+                self.restore_input_text = ("SELECT", "prompt")
+                self.update_status_line()
 
         elif cmd_type == 25:   # GOTO
             object_id = cmd_args["channel_id"]

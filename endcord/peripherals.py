@@ -420,7 +420,7 @@ def native_select_files(file_filter=None, multiple=True, auto=False):
             return []
 
     elif filedialog == "mac":
-        command += f'choose file default location "{init_dir}"  with prompt "Import File"'
+        command = f'choose file default location "{init_dir}"  with prompt "Import File"'
         data = subprocess.run(["osascript", "-"], input=command, text=True, capture_output=True, check=False)
         data = data.stdout.strip().split(",")
         return data[data.find(":"):].replace(":", "/")
