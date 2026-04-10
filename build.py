@@ -37,6 +37,20 @@ def get_app_name():
     sys.exit(1)
 
 
+def get_media_packages():
+    """Get media packages from pyproject.toml"""
+    if os.path.exists("pyproject.toml"):
+        with open("pyproject.toml", "rb") as f:
+            data = tomllib.load(f)
+        dependencies = data["dependency-groups"]["media"]
+        names = []
+        for dependency in dependencies:
+            names.append(re.split(r"[<>=!~]", dependency)[0].strip())
+        return names
+    print("pyproject.toml file not found", file=sys.stderr)
+    sys.exit(1)
+
+
 def get_version_number():
     """Get version number from pyproject.toml"""
     if os.path.exists("pyproject.toml"):
@@ -179,7 +193,7 @@ def remove_media():
     """Remove media support"""
     if check_media_support():
         fprint("Removing media support dependencies")
-        subprocess.run(["uv", "pip", "uninstall", "pillow", "av", "pynacl"], check=True)
+        subprocess.run(["uv", "pip", "uninstall"] + get_media_packages(), check=True)
 
 
 def check_dev():
