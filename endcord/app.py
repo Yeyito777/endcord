@@ -64,7 +64,7 @@ RECENT_CHANNELS_LIMIT = 10
 MB = 1024 * 1024
 USER_UPLOAD_LIMITS = (10*MB, 50*MB, 500*MB, 50*MB)   # premium tier 0, 1, 2, 3 (none, classic, full, basic)
 GUILD_UPLOAD_LIMITS = (10*MB, 10*MB, 50*MB, 100*MB)   # premium tier 0, 1, 2, 3
-FORUM_COMMANDS = (1, 2, 7, 13, 14, 15, 17, 20, 22, 25, 27, 29, 30, 31, 32, 40, 42, 49, 50, 51, 52, 53, 55, 56, 57, 58, 61, 62, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76)
+FORUM_COMMANDS = (1, 2, 7, 13, 14, 15, 17, 20, 22, 25, 27, 29, 30, 31, 32, 40, 42, 49, 50, 51, 52, 53, 55, 56, 57, 58, 61, 62, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77)
 COLLAPSE_ALL_EXCEPT_OPTIONS = ("current", "selected", "above", "bellow")
 STANDING_TYPES = ("All Good", "Limited", "Very Limited", "At risk", "Suspended")
 
@@ -1866,9 +1866,9 @@ class Endcord:
                 if "pending" not in self.messages[msg_index]:
                     self.copy_msg_url(msg_index)
 
-            # UNUSED
-            # elif action == 32:
-            #     pass
+            # toggle tree
+            elif action == 32:
+                self.tui.set_tree_width(-1)
 
             # cycle status
             elif action == 33:
@@ -3024,7 +3024,7 @@ class Endcord:
             else:
                 self.start_recording()
 
-        elif cmd_type == 22:   # MEMBER_LIST
+        elif cmd_type == 22:   # TOGGLE_MEMBER_LIST
             self.toggle_member_list()
 
         elif cmd_type == 23:   # REACT
@@ -3835,6 +3835,9 @@ class Endcord:
             extra_title, extra_body = formatter.generate_extra_window_text("Client stats:", text, max_w)
             self.tui.draw_extra_window(extra_title, extra_body, reset_scroll=reset)
             self.extra_window_open = True
+
+        elif cmd_type == 77:   # TOGGLE_TREE
+            self.tui.set_tree_width(-1)
 
         if success is None:
             self.gateway.set_offline()

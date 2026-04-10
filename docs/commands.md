@@ -37,8 +37,10 @@
     Cancel all downloads and/or uploads. Can use `cancel 1` or `cancel download`... Use just `cancel` to cancel both downloads and uploads.
 - `external_edit`  
     Open external editor to type message in it.
-- `member_list`  
+- `toggle_member_list`  
     Toggle member list.
+- `toggle_tree`  
+    Toggle channel tree.
 - `toggle_thread`  
     Join/leave currently open thread.
 - `toggle_thread_tree`  

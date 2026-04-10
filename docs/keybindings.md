@@ -110,11 +110,12 @@ Some keybindings are used by terminals or OS itself, so they are by default rebo
 
 ### Other
 - Scroll up/down in all windows
-- Single click to select in all windows, in tree also: un/collapse
-- Single click on tab string to switch tabs (only if exactly `format_title_line_r = "%tabs"` in config)
-- Click on extra window title and drag it to resize it.
+- Click to select in all windows, in tree also: un/collapse
+- Click on tab string to switch tabs (only if exactly `format_title_line_r = "%tabs"` in config)
+- Click on extra window title and drag it to resize it
+- Click on tree border to toggle minimized tree state
 
-On Windows, double click isn't working, instead use triple click.
+On Windows, double click isn't working, use triple click instead.
 
 
 ## Configuring keybindings

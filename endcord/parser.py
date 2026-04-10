@@ -525,8 +525,8 @@ def command_string(text):
         text += " "
         cmd_args = {"cancel": text.split(" ")[1].lower() == "cancel"}
 
-    # 22 - MEMBER_LIST
-    elif text_lower.startswith("member_list"):
+    # 22 - TOGGLE_MEMBER_LIST
+    elif text_lower.startswith("toggle_member_list"):
         cmd_type = 22
 
     # 23 - REACT
@@ -957,5 +957,10 @@ def command_string(text):
     # 76 - SHOW_STATS
     elif text_lower.startswith("show_stats"):
         cmd_type = 76
+
+    # 76 - TOGGLE_TREE
+    elif text_lower.startswith("toggle_tree"):
+        cmd_type = 77
+
 
     return cmd_type, cmd_args

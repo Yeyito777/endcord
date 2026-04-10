@@ -247,6 +247,7 @@ keybindings = {
     "cancel": 24,   # Ctrl+X
     "cycle_status": "ALT+100",   # Alt+D
     "toggle_member_list": "ALT+109",   # Alt+M
+    "toggle_tree": "ALT+116",   # Alt+T
     "toggle_tab": 20,   # Ctrl+T
     "switch_tab_modifier": "ALT+NUM",   # Alt+Num
     "open_external_editor": "ALT+101",   # Alt+E
@@ -328,7 +329,8 @@ vim_mode_bindings = {
     "cancel": "x",
     "cycle_status": "s",
     "toggle_member_list": "m",
-    "toggle_tab": "t",
+    "toggle_tree": "t",
+    "toggle_tab": "T",
     "switch_tab_modifier": "NUM",
     "open_external_editor": "E",
     "quit": "Q",

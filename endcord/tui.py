@@ -253,6 +253,7 @@ class TUI():
         vline = config["tree_drop_down_vline"][0]
         self.vline = acs_map.get(vline, vline)
         self.tree_width = max(config["tree_width"], 10)
+        self.tree_width_conf = self.tree_width
         self.extra_window_h = config["extra_window_height"]   # load initial value
         self.blink_cursor_on = config["cursor_on_time"]
         self.blink_cursor_off = config["cursor_off_time"]
@@ -575,7 +576,7 @@ class TUI():
         self.update_prompt(self.prompt)
         self.spellcheck()
         self.draw_input_line()
-        self.draw_border(tree_hwyx, top=not(self.have_title_tree))
+        self.draw_border(tree_hwyx, top=not(self.have_title_tree) or self.tree_width < 10)
         self.draw_tree()
         if self.have_title:
             self.draw_title_line()
@@ -855,6 +856,18 @@ class TUI():
         del self.win_extra_window
         self.win_extra_window = None
         self.draw_extra_window(self.extra_window_title, self.extra_window_body, select=self.extra_select, reset_scroll=False)
+
+
+    def set_tree_width(self, value):
+        """Chang tree width, does not redraw, if value is negative it will toggle state"""
+        if value < 0:
+            if self.tree_width == 1:
+                self.tree_width = self.tree_width_conf
+            else:
+                self.tree_width = 1
+        else:
+            self.tree_width = value
+        self.resize()
 
 
     def set_vim_insert(self, value):
@@ -1164,10 +1177,21 @@ class TUI():
             title_txt_r = self.title_txt_r
             if title_txt_r:
                 title_txt_r = title_txt_r[:w - 2*self.bordered]
+            title_txt_l = self.title_txt_l
 
-            if self.title_txt_r and len(self.title_txt_l) < w - 2:
+            if self.tree_width < 10:   # merge title tree with left title
+                if self.bordered:
+                    title_tree_txt = replace_spaces_dash(trim_with_dash(self.title_tree_txt[:self.tree_width_conf]))
+                    title_tree_txt = title_tree_txt + "─" * (self.tree_width_conf - len(title_tree_txt) - 2) + "─"
+                    title_txt_l = title_tree_txt + trim_with_dash(title_txt_l)
+                else:
+                    title_tree_txt = self.title_tree_txt[:self.tree_width_conf-2]
+                    title_tree_txt = title_tree_txt + " " * (self.tree_width_conf-2 - len(title_tree_txt)) + " "
+                    title_txt_l = title_tree_txt + title_txt_l
+
+            if self.title_txt_r and len(title_txt_l) < w - 2:
                 title_txt_r = replace_spaces_dash(trim_with_dash(title_txt_r, dash=self.bordered))
-                title_txt_l = replace_spaces_dash(trim_with_dash(self.title_txt_l, dash=self.bordered))
+                title_txt_l = replace_spaces_dash(trim_with_dash(title_txt_l, dash=self.bordered))
                 if self.bordered:
                     title_txt_l = self.corner_ul + title_txt_l
                     title_txt_r = title_txt_r[: max(w - (len(title_txt_l) + 5), 0)] + "─" + self.corner_ur
@@ -1186,14 +1210,14 @@ class TUI():
                     title_format.append((tab[0], tab[1] + text_l_len, min(tab[2] + text_l_len, w-1)))
 
             elif self.bordered:
-                title_txt_l = replace_spaces_dash(trim_with_dash(self.title_txt_l[:w - 1 - 2*self.bordered]))
+                title_txt_l = replace_spaces_dash(trim_with_dash(title_txt_l[:w - 1 - 2*self.bordered]))
                 title_line = self.corner_ul + title_txt_l + "─" * (w - len(title_txt_l) - 2) + self.corner_ur
                 title_format = []
                 for item in self.title_txt_l_format:
                     title_format.append((item[0], item[1] + 1, min(item[2] + 1, w-1)))
 
             else:
-                title_txt_l = self.title_txt_l[:w - 1 - 2*self.bordered]
+                title_txt_l = title_txt_l[:w - 1 - 2*self.bordered]
                 title_line = title_txt_l + " " * (w - len(title_txt_l))
                 title_format = self.title_txt_l_format
 
@@ -1237,6 +1261,8 @@ class TUI():
 
     def draw_title_tree(self):
         """Draw tree title line, works same as status line, but without right text"""
+        if self.tree_width < 10:
+            return
         with self.lock:
             h, w = self.tree_title_hw
             title_txt = self.title_tree_txt[:w]
@@ -1352,6 +1378,9 @@ class TUI():
 
     def draw_tree(self):
         """Draw channel tree"""
+        if self.tree_width < 10:
+            self.draw_tree_mini()
+            return
         with self.lock:
             h, w = self.tree_hw
             # drawing from top to down
@@ -1462,6 +1491,32 @@ class TUI():
             except curses.error:
                 # this exception will happen when window is resized to smaller h dimensions
                 self.resize()
+
+
+    def draw_tree_mini(self):
+        """Draw minimised channel tree"""
+        mentions = 0
+        for code in self.tree_format:
+            if 300 <= code < 499 and (code % 100) // 10 == 2:
+                mentions += 1
+
+        h, _ = self.tree_hw
+        y = 0
+        if mentions:
+            text = f">>> {mentions} MENTIONS >>>".center(h)
+            color = curses.color_pair(8)
+        else:
+            text = ">>> TREE >>>".center(h)
+            color = curses.color_pair(3)
+
+        try:
+            while y < h:
+                self.win_tree.insch(y, 0, text[y], color)
+                y += 1
+                self.win_tree.noutrefresh()
+                self.need_update.set()
+        except curses.error:
+            self.resize()
 
 
     def draw_prompt(self):
@@ -2788,6 +2843,9 @@ class TUI():
             elif key in self.keybindings["command_palette"]:
                 return self.return_input_code(38)
 
+            elif key in self.keybindings["toggle_tree"]:
+                return self.return_input_code(32)
+
             elif key in self.keybindings["show_reactions"] and not forum:
                 return self.return_input_code(37)
 
@@ -2848,22 +2906,30 @@ class TUI():
             return None
 
 
-    def mouse_in_window(self, x, y, win):
+    def mouse_in_window(self, x, y, window, around=False):
         """Check if mouse is inside specified window"""
-        win_y, win_x = win.getbegyx()
-        win_h, win_w = win.getmaxyx()
+        win_y, win_x = window.getbegyx()
+        win_h, win_w = window.getmaxyx()
+        if around:
+            win_y -= 1
+            win_x -= 1
+            win_h += 2
+            win_w += 2
         return (win_x <= x < win_x + win_w) and (win_y <= y < win_y + win_h)
 
 
-    def mouse_rel_pos(self, x, y, win):
+    def mouse_rel_pos(self, x, y, window):
         """Get mouse position relative to specified window"""
-        win_y, win_x = win.getbegyx()
+        win_y, win_x = window.getbegyx()
         return (x - win_x, y - win_y)
 
 
     def mouse_single_click(self, x, y):
         """Handle mouse single click events"""
         if self.mouse_in_window(x, y, self.win_tree):
+            if self.tree_width < 10:
+                self.set_tree_width(-1)
+                return None
             x, y = self.mouse_rel_pos(x, y, self.win_tree)
             self.tree_selected = self.tree_index + y
             self.draw_tree()
@@ -2900,6 +2966,10 @@ class TUI():
         elif self.win_title_line and self.mouse_in_window(x, y, self.win_title_line):
             self.mouse_rel_x = self.mouse_rel_pos(x, y, self.win_title_line)[0]
             return 16   # special handling
+
+        elif self.mouse_in_window(x, y, self.win_tree, around=True):
+            self.set_tree_width(-1)
+            return None
 
 
     def mouse_double_click(self, x, y):
