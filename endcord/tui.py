@@ -171,15 +171,20 @@ def draw_chat(win_chat, h, w, chat_buffer, chat_format, chat_index, chat_selecte
             fill_len = w - len(line)
             win_chat.insstr(y, 0, line + (" " * fill_len) + "\n", curses.color_pair(chat_selected_color_id))
         else:
-            line_format = chat_format[num]
-            default_color_id = line_format[0][0]
+            if num < len(chat_format) and chat_format[num]:
+                line_format = chat_format[num]
+                default_color_id = line_format[0][0]
+                format_parts = line_format[1:]
+            else:
+                default_color_id = color_default
+                format_parts = ()
             # filled with spaces so background is drawn all the way
             default_color = curses.color_pair(default_color_id) | attrib_map[default_color_id]
             win_chat.insstr(y, 0, " " * w + "\n", curses.color_pair(default_color_id))
 
             for pos in range(min(len(line), w)):
                 character = line[pos]
-                for format_part in line_format[1:]:
+                for format_part in format_parts:
                     color = format_part[0]
                     start = format_part[1]
                     end = format_part[2]
@@ -2219,6 +2224,13 @@ class TUI():
         """Update text buffer"""
         self.chat_buffer = chat_text
         self.chat_format = chat_format
+        chat_len = len(self.chat_buffer)
+        if chat_len == 0:
+            self.chat_selected = -1
+            self.chat_index = 0
+        else:
+            self.chat_selected = min(self.chat_selected, chat_len - 1)
+            self.chat_index = min(max(self.chat_index, 0), max(chat_len - self.chat_hw[0], 0))
         if not self.disable_drawing:
             self.draw_chat()
 
