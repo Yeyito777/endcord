@@ -369,6 +369,7 @@ class TUI():
         self.delta_cache = ""
         self.delta_index = 0
         self.undo_index = None
+        self.pending_prompt_action = None
         self.input_select_start = None
         self.input_select_end = None
         self.input_select_text = ""
@@ -1148,11 +1149,246 @@ class TUI():
         return True
 
 
+    def is_input_word_char(self, character):
+        """Return True for vim word characters in the prompt buffer."""
+        return character == "_" or character.isalnum()
+
+
+    def is_input_space(self, character):
+        """Return True for whitespace treated as word separators in prompt motions."""
+        return character in (" ", "\t", "\n")
+
+
+    def is_input_punct(self, character):
+        """Return True for punctuation treated as its own word block."""
+        return not self.is_input_word_char(character) and not self.is_input_space(character)
+
+
+    def get_input_line_start(self, pos=None):
+        """Return start offset of the logical input line containing pos."""
+        if pos is None:
+            pos = self.input_index
+        pos = min(max(0, pos), len(self.input_buffer))
+        return self.input_buffer.rfind("\n", 0, pos) + 1
+
+
+    def get_input_line_end(self, pos=None):
+        """Return end offset of the logical input line containing pos."""
+        if pos is None:
+            pos = self.input_index
+        pos = min(max(0, pos), len(self.input_buffer))
+        line_end = self.input_buffer.find("\n", pos)
+        if line_end == -1:
+            return len(self.input_buffer)
+        return line_end
+
+
+    def input_word_forward(self, pos=None, big=False):
+        """Return next vim word/WORD start from pos."""
+        if pos is None:
+            pos = self.input_index
+        buffer = self.input_buffer
+        length = len(buffer)
+        if pos >= length:
+            return pos
+        i = pos
+        if big:
+            while i < length and not self.is_input_space(buffer[i]):
+                i += 1
+            while i < length and self.is_input_space(buffer[i]):
+                i += 1
+            return i
+        if self.is_input_word_char(buffer[i]):
+            while i < length and self.is_input_word_char(buffer[i]):
+                i += 1
+        elif self.is_input_punct(buffer[i]):
+            while i < length and self.is_input_punct(buffer[i]):
+                i += 1
+        else:
+            i += 1
+        while i < length and self.is_input_space(buffer[i]):
+            i += 1
+        return i
+
+
+    def input_word_backward(self, pos=None, big=False):
+        """Return previous vim word/WORD start from pos."""
+        if pos is None:
+            pos = self.input_index
+        if pos <= 0:
+            return 0
+        buffer = self.input_buffer
+        i = pos - 1
+        while i > 0 and self.is_input_space(buffer[i]):
+            i -= 1
+        if big:
+            while i > 0 and not self.is_input_space(buffer[i - 1]):
+                i -= 1
+            return max(0, i)
+        if i >= 0 and self.is_input_word_char(buffer[i]):
+            while i > 0 and self.is_input_word_char(buffer[i - 1]):
+                i -= 1
+        elif i >= 0 and self.is_input_punct(buffer[i]):
+            while i > 0 and self.is_input_punct(buffer[i - 1]):
+                i -= 1
+        return max(0, i)
+
+
+    def input_word_end(self, pos=None, big=False):
+        """Return end of current/next vim word or WORD from pos."""
+        if pos is None:
+            pos = self.input_index
+        buffer = self.input_buffer
+        length = len(buffer)
+        if length == 0:
+            return 0
+        if pos >= length - 1:
+            return max(0, length - 1)
+        i = pos + 1
+        while i < length and self.is_input_space(buffer[i]):
+            i += 1
+        if big:
+            while i < length - 1 and not self.is_input_space(buffer[i + 1]):
+                i += 1
+            return i
+        if i < length and self.is_input_word_char(buffer[i]):
+            while i < length - 1 and self.is_input_word_char(buffer[i + 1]):
+                i += 1
+        elif i < length and self.is_input_punct(buffer[i]):
+            while i < length - 1 and self.is_input_punct(buffer[i + 1]):
+                i += 1
+        return i
+
+
+    def keep_input_index_on_screen(self):
+        """Adjust horizontal prompt scroll so the current input index stays visible."""
+        width = self.input_hw[1]
+        max_line_index = max(0, len(self.input_buffer) - width)
+        self.input_index = min(max(0, self.input_index), len(self.input_buffer))
+        left_diff = self.input_index - max(0, len(self.input_buffer) - width + 1 - self.input_line_index)
+        if left_diff <= 0:
+            self.input_line_index -= left_diff - 4
+        right_diff = self.input_index - max(0, len(self.input_buffer) - width - self.input_line_index) - width
+        if right_diff >= 0:
+            self.input_line_index -= right_diff + 4
+        self.input_line_index = min(max(0, self.input_line_index), max_line_index)
+
+
+    def move_input_with_motion(self, direction):
+        """Move prompt cursor using vim-style word motions."""
+        if direction == "word_left":
+            self.input_index = self.input_word_backward()
+        elif direction == "word_right":
+            self.input_index = self.input_word_forward()
+        elif direction == "word_end":
+            self.input_index = self.input_word_end()
+        elif direction == "word_left_big":
+            self.input_index = self.input_word_backward(big=True)
+        elif direction == "word_right_big":
+            self.input_index = self.input_word_forward(big=True)
+        elif direction == "word_end_big":
+            self.input_index = self.input_word_end(big=True)
+        self.keep_input_index_on_screen()
+        self.input_select_start = None
+
+
+    def delete_input_range(self, start, end):
+        """Delete a range from the prompt buffer and record it for undo."""
+        start = min(max(0, start), len(self.input_buffer))
+        end = min(max(0, end), len(self.input_buffer))
+        if start >= end:
+            return False
+        removed = self.input_buffer[start:end]
+        self.input_buffer = self.input_buffer[:start] + self.input_buffer[end:]
+        self.input_index = end
+        width = self.input_hw[1]
+        self.input_line_index -= end - start
+        self.input_line_index = min(max(0, self.input_line_index), max(0, len(self.input_buffer) - width))
+        for character in removed[::-1]:
+            self.input_index -= 1
+            self.add_to_delta_store("BACKSPACE", character)
+        self.keep_input_index_on_screen()
+        self.input_select_start = None
+        return True
+
+
+    def delete_input_to_line_end(self):
+        """Delete from the cursor to the end of the current logical line."""
+        return self.delete_input_range(self.input_index, self.get_input_line_end())
+
+
+    def delete_input_current_line(self):
+        """Delete the current logical line, including one adjacent newline when possible."""
+        start = self.get_input_line_start()
+        end = self.get_input_line_end()
+        if end < len(self.input_buffer):
+            end += 1
+        elif start > 0:
+            start -= 1
+        return self.delete_input_range(start, end)
+
+
+    def handle_vim_prompt_key(self, key):
+        """Handle vim-style prompt motions/operators in normal mode."""
+        if not (self.vim_mode and not self.insert_mode and self.active_section == "main"):
+            self.pending_prompt_action = None
+            return None
+        if not isinstance(key, int):
+            self.pending_prompt_action = None
+            return None
+
+        if self.pending_prompt_action == "delete_line":
+            self.pending_prompt_action = None
+            if key == ord("d"):
+                self.delete_input_current_line()
+                self.spellcheck()
+                return -1
+
+        if key == ord("d") and self.input_buffer:
+            self.pending_prompt_action = "delete_line"
+            return -1
+        if key == ord("D") and self.input_buffer:
+            self.delete_input_to_line_end()
+            self.spellcheck()
+            return -1
+        if key == ord("C"):
+            self.delete_input_to_line_end()
+            self.spellcheck()
+            self.set_vim_insert(True)
+            return 28
+        if key == ord("b"):
+            self.move_input_with_motion("word_left")
+            self.spellcheck()
+            return -1
+        if key == ord("w"):
+            self.move_input_with_motion("word_right")
+            self.spellcheck()
+            return -1
+        if key == ord("B") and self.input_buffer:
+            self.move_input_with_motion("word_left_big")
+            self.spellcheck()
+            return -1
+        if key == ord("W"):
+            self.move_input_with_motion("word_right_big")
+            self.spellcheck()
+            return -1
+        if key == ord("e") and self.input_buffer:
+            self.move_input_with_motion("word_end")
+            self.spellcheck()
+            return -1
+        if key == ord("E") and self.input_buffer:
+            self.move_input_with_motion("word_end_big")
+            self.spellcheck()
+            return -1
+        return None
+
+
     def set_vim_insert(self, value, append=False):
         """Set insert mode for vim mode."""
         if self.vim_mode:
             if value and append:
                 self.move_input_cursor_right()
+            self.pending_prompt_action = None
             self.insert_mode = value
             self.set_active_section("main")
             self.show_cursor()
@@ -2687,6 +2923,7 @@ class TUI():
     def return_input_code(self, code):
         """Clean input line and return input code wit other data"""
         tmp = self.input_buffer
+        self.pending_prompt_action = None
         self.input_buffer = ""
         return tmp, self.chat_selected, self.tree_selected_abs, code
 
@@ -2873,6 +3110,12 @@ class TUI():
                  self.pressed_num_key = key - 48
                  return self.return_input_code(42)
 
+            elif (prompt_code := self.handle_vim_prompt_key(key)) is not None:
+                if prompt_code >= 0:
+                    return self.return_input_code(prompt_code)
+                if self.enable_autocomplete:
+                    selected_completion = 0
+
             elif (code := self.common_keybindings(key, command=command, forum=forum)):
                 return self.return_input_code(code)
 
@@ -2953,20 +3196,7 @@ class TUI():
                     self.spellcheck()
 
             elif key in self.keybindings["word_left"]:
-                left_len = 0
-                for word in self.input_buffer[:self.input_index].split(" ")[::-1]:
-                    if word == "":
-                        left_len += 1
-                    else:
-                        left_len += len(word)
-                        break
-                self.input_index -= left_len
-                self.input_index = max(self.input_index, 0)
-                input_line_index_diff = self.input_index - max(0, len(self.input_buffer) - w + 1 - self.input_line_index)
-                if input_line_index_diff <= 0:
-                    self.input_line_index -= input_line_index_diff - 4   # diff is negative
-                    self.input_line_index = min(max(0, self.input_line_index), max(0, len(self.input_buffer) - w))
-                self.input_select_start = None
+                self.move_input_with_motion("word_left")
                 self.spellcheck()
 
             elif key in self.keybindings["word_right"]:
@@ -2989,21 +3219,11 @@ class TUI():
             elif key in self.keybindings["select_word_left"]:
                 if self.input_select_start is None:
                     self.input_select_end = self.input_select_start = self.input_index
-                left_len = 0
-                for word in self.input_buffer[:self.input_index].split(" ")[::-1]:
-                    if word == "":
-                        left_len += 1
-                    else:
-                        left_len += len(word)
-                        break
-                self.input_index -= left_len
-                self.input_index = max(self.input_index, 0)
-                input_line_index_diff = self.input_index - max(0, len(self.input_buffer) - w + 1 - self.input_line_index)
-                if input_line_index_diff <= 0:
-                    self.input_line_index -= input_line_index_diff - 4   # diff is negative
-                    self.input_line_index = min(max(0, self.input_line_index), max(0, len(self.input_buffer) - w))
+                previous_index = self.input_index
+                self.input_index = self.input_word_backward()
+                self.keep_input_index_on_screen()
                 if self.input_select_start is not None:
-                    self.input_select_end -= left_len
+                    self.input_select_end -= previous_index - self.input_index
                     self.input_select_end = min(max(0, self.input_select_end), len(self.input_buffer))
                 self.spellcheck()
 

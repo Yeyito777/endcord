@@ -166,7 +166,11 @@ Special commands available only for command-bindings are documented in [Commands
 
 ### input line
 - `h/l` - character left/right
-- `b/w` - word left/right
+- `b/w/e` - word left / next word / word end
+- `B/W/E` - WORD left / next WORD / WORD end
+- `dd` - delete current prompt line
+- `D` - delete to end of prompt line
+- `C` - change to end of prompt line
 - `Ctrl+h/l` - select left/right
 - `H/L` - select word left/right
 - `Ctrl+N` - Insert newline in input line (warning `Shift+Enter` doesn't work in terminals)
