@@ -264,6 +264,10 @@ class TUI():
         self.color_id_input_line = self.init_pair(config["color_input_line"])
         self.color_id_cursor = self.init_pair(config["color_cursor"])
         self.insert_cursor_color_id = self.init_pair(self.build_insert_cursor_color(config["color_cursor"], config["color_input_line"]))
+        self.terminal_insert_cursor_supported = sys.stdout.isatty() and not uses_pgcurses
+        self.terminal_cursor_color = self.get_terminal_cursor_color(config["color_cursor"])
+        self.hardware_cursor_visible = False
+        self.terminal_cursor_shape = None
         self.color_id_chat_selected = self.init_pair(config["color_chat_selected"])
         self.color_id_status_line = self.init_pair(config["color_status_line"])
         self.color_id_presence_online = self.init_pair((46, tree_bg))
@@ -697,6 +701,7 @@ class TUI():
             self.screen.refresh()
             self.disable_drawing = False
             self.resize(redraw_only=True)
+            self.sync_terminal_cursor_state()
 
 
     def is_window_open(self):
@@ -1105,6 +1110,58 @@ class TUI():
         return [beam_fg, beam_bg]
 
 
+    def get_terminal_cursor_color(self, cursor_color):
+        """Resolve configured insert cursor color into #RRGGBB for OSC 12 if possible."""
+        if isinstance(cursor_color, (list, tuple)) and len(cursor_color) >= 2 and cursor_color[1] not in (None, -1):
+            color_value = cursor_color[1]
+        elif isinstance(cursor_color, (list, tuple)):
+            color_value = cursor_color[0]
+        else:
+            color_value = cursor_color
+        if color_utils.is_rgb_color(color_value):
+            rgb = color_utils.parse_rgb_color(color_value)
+        elif isinstance(color_value, int) and 0 <= color_value < len(color_utils.colors):
+            rgb = color_utils.colors[color_value]
+        else:
+            return None
+        return f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
+
+
+    def uses_terminal_insert_cursor(self):
+        """Return True when insert mode should use the terminal hardware cursor."""
+        return (
+            self.terminal_insert_cursor_supported and
+            self.vim_mode and
+            self.insert_mode and
+            self.active_section == "main" and
+            not self.disable_drawing
+        )
+
+
+    def sync_terminal_cursor_state(self, visible=None):
+        """Update terminal hardware cursor visibility/style for insert mode."""
+        if not self.terminal_insert_cursor_supported:
+            return
+        use_terminal_cursor = self.uses_terminal_insert_cursor()
+        should_show = use_terminal_cursor and (self.cursor_on if visible is None else visible)
+        target_shape = "bar" if use_terminal_cursor else None
+        if target_shape != self.terminal_cursor_shape and target_shape == "bar":
+            sequence = "\033[6 q"
+            if self.terminal_cursor_color:
+                sequence += f"\033]12;{self.terminal_cursor_color}\033\\"
+            sys.stdout.write(sequence)
+            sys.stdout.flush()
+            self.terminal_cursor_shape = target_shape
+        elif not use_terminal_cursor:
+            self.terminal_cursor_shape = None
+        if should_show != self.hardware_cursor_visible:
+            try:
+                curses.curs_set(1 if should_show else 0)
+            except curses.error:
+                pass
+            self.hardware_cursor_visible = should_show
+
+
     def get_visible_input_line(self):
         """Return currently visible input slice and its width."""
         width = self.input_hw[1]
@@ -1414,6 +1471,7 @@ class TUI():
             self.sync_input_cursor_position()
             self.pending_prompt_action = None
             self.insert_mode = value
+            self.sync_terminal_cursor_state(visible=self.cursor_on if value else False)
             self.set_active_section("main")
             self.show_cursor()
 
@@ -1894,6 +1952,9 @@ class TUI():
         """Draw text input line"""
         with self.lock:
             self.sync_input_cursor_position()
+            use_terminal_cursor = self.uses_terminal_insert_cursor()
+            if not use_terminal_cursor:
+                self.sync_terminal_cursor_state(visible=False)
             w, start, line_text = self.get_visible_input_line()
 
             # prepare selected range
@@ -1904,9 +1965,6 @@ class TUI():
                     # swap so start is always left side
                     selected_start_screen, selected_end_screen = selected_end_screen, selected_start_screen
 
-            # if not line_text:   # only needed if cursor drawing is disabled
-            #     line_text = " "
-
             # draw
             character = " "
             pos = 0
@@ -1914,24 +1972,30 @@ class TUI():
             cursor_color_id = self.get_cursor_on_color_id()
             for pos, character in enumerate(line_text):
                 # cursor in the string
-                if not cursor_drawn and self.cursor_pos == pos:
+                if not use_terminal_cursor and not cursor_drawn and self.cursor_pos == pos:
                     self.draw_cursor_cell(cursor_color_id, line_text)
                     cursor_drawn = True
                 # selected part of string
                 elif self.input_select_start is not None and selected_start_screen <= pos < selected_end_screen:
-                    safe_insch(self.win_input_line, 0, pos, character, curses.color_pair(self.color_id_cursor) | self.attrib_map[self.color_id_cursor])
+                    safe_drawch(self.win_input_line, 0, pos, character, curses.color_pair(self.color_id_cursor) | self.attrib_map[self.color_id_cursor])
                 elif pos in self.red_list:
-                    safe_insch(self.win_input_line, 0, pos, character, curses.color_pair(self.color_id_presence_dnd))
+                    safe_drawch(self.win_input_line, 0, pos, character, curses.color_pair(self.color_id_presence_dnd))
                 else:
                     for bad_range in self.misspelled:
                         if bad_range[0] <= pos < sum(bad_range) and (bad_range[0] > self.cursor_pos or self.cursor_pos >= sum(bad_range)+1):
-                            safe_insch(self.win_input_line, 0, pos, character, curses.color_pair(self.color_id_misspelled) | self.attrib_map[self.color_id_misspelled])
+                            safe_drawch(self.win_input_line, 0, pos, character, curses.color_pair(self.color_id_misspelled) | self.attrib_map[self.color_id_misspelled])
                             break
                     else:
-                        safe_insch(self.win_input_line, 0, pos, character, curses.color_pair(self.color_id_input_line) | self.attrib_map[self.color_id_input_line])
+                        safe_drawch(self.win_input_line, 0, pos, character, curses.color_pair(self.color_id_input_line) | self.attrib_map[self.color_id_input_line])
             self.win_input_line.insch(0, pos + 1, "\n", curses.color_pair(0))
             # cursor at the end of string
-            if not cursor_drawn and self.cursor_pos >= len(line_text):
+            if use_terminal_cursor:
+                try:
+                    self.win_input_line.move(0, min(max(self.cursor_pos, 0), w - 1))
+                except curses.error:
+                    pass
+                self.sync_terminal_cursor_state()
+            elif not cursor_drawn and self.cursor_pos >= len(line_text):
                 self.show_cursor()
             self.win_input_line.noutrefresh()
             self.need_update.set()
@@ -2441,6 +2505,16 @@ class TUI():
     def set_cursor_color(self, color_id):
         """Changes cursor color"""
         with self.lock:
+            if self.uses_terminal_insert_cursor() or self.hardware_cursor_visible:
+                try:
+                    self.win_input_line.move(0, min(max(self.cursor_pos, 0), self.input_hw[1] - 1))
+                except curses.error:
+                    pass
+                self.sync_terminal_cursor_state(visible=(color_id == self.get_cursor_on_color_id()))
+                self.win_input_line.noutrefresh()
+                self.need_update.set()
+                if self.uses_terminal_insert_cursor():
+                    return
             _, _, line_text = self.get_visible_input_line()
             if self.draw_cursor_cell(color_id, line_text):
                 self.win_input_line.noutrefresh()
