@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import queue
-import re
 import sys
 import threading
 
@@ -16,6 +15,8 @@ os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 import pygame
 import pygame.freetype
 from pygame._sdl2 import Window as pg_Window
+
+from endcord import xterm256
 
 if sys.platform.startswith("android"):
     sys.platform = "linux"
@@ -173,7 +174,6 @@ event_queue = queue.Queue()
 color_map = [DEFAULT_PAIR] * (COLORS + 1)
 fake_videoresize = pygame.event.Event(pygame.VIDEORESIZE, w=1, h=1)   # used to trigger redraw
 icon = None
-hex_color = re.compile(r"^#?[0-9a-fA-F]{6}$")
 current_icon_index = None
 emoji_font = None
 font_regular = None
@@ -290,27 +290,9 @@ def xterm_to_rgb(x):
     """Convert xterm256 color to RGB tuple"""
     if x < 16:
         return SYSTEM_COLORS[x]
-    if 16 <= x <= 231:
-        x -= 16
-        r = (x // 36) % 6
-        g = (x // 6) % 6
-        b = x % 6
-        return (r * 51, g * 51, b * 51)
-    if 232 <= x <= 255:
-        gray = 8 + (x - 232) * 10
-        return (gray, gray, gray)
+    if 16 <= x < len(xterm256.colors):
+        return xterm256.colors[x]
     return (0, 0, 0)
-
-
-
-def parse_rgb_color(value):
-    """Parse #RRGGBB string or RGB tuple/list into RGB tuple."""
-    if isinstance(value, str) and hex_color.fullmatch(value.strip()):
-        color_value = value.strip().lstrip("#")
-        return tuple(int(color_value[i:i+2], 16) for i in (0, 2, 4))
-    if isinstance(value, (list, tuple)) and len(value) == 3 and all(isinstance(channel, int) and 0 <= channel <= 255 for channel in value):
-        return tuple(value)
-    raise ValueError(f"Invalid RGB color: {value}")
 
 
 
@@ -318,7 +300,7 @@ def resolve_rgb_color(value, default_rgb):
     """Resolve xterm index or exact RGB color to RGB tuple."""
     if isinstance(value, int):
         return default_rgb if value <= 0 else xterm_to_rgb(value)
-    return parse_rgb_color(value)
+    return xterm256.parse_rgb_color(value)
 
 
 
