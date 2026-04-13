@@ -1067,9 +1067,23 @@ class TUI():
         return character
 
 
-    def set_vim_insert(self, value):
-        """Set insert mode for vim mode"""
+    def move_input_cursor_right(self):
+        """Move input cursor one character to the right, scrolling if needed."""
+        if self.input_index >= len(self.input_buffer):
+            return False
+        width = self.input_hw[1]
+        if self.input_index - max(0, len(self.input_buffer) - width - self.input_line_index) == width:
+            self.input_line_index -= min(INPUT_LINE_JUMP, width - 3)
+        else:
+            self.input_index += 1
+        return True
+
+
+    def set_vim_insert(self, value, append=False):
+        """Set insert mode for vim mode."""
         if self.vim_mode:
+            if value and append:
+                self.move_input_cursor_right()
             self.insert_mode = value
             self.set_active_section("main")
             self.show_cursor()
@@ -2786,12 +2800,7 @@ class TUI():
                 self.spellcheck()
 
             elif key in self.KEYBINDINGS_INPUT_RIGHT:
-                if self.input_index < len(self.input_buffer):
-                    # if index hits right screen edge, but there is more text to right, move line right
-                    if self.input_index - max(0, len(self.input_buffer) - w - self.input_line_index) == w:
-                        self.input_line_index -= min(INPUT_LINE_JUMP, w - 3)
-                    else:
-                        self.input_index += 1
+                if self.move_input_cursor_right():
                     self.show_cursor()
                 self.input_select_start = None
                 self.spellcheck()
@@ -3133,6 +3142,10 @@ class TUI():
 
             elif key in self.keybindings["open_external_editor"] and not forum:
                 return self.return_input_code(45)
+
+            elif self.vim_mode and key in self.keybindings.get("append_mode", ()):
+                self.set_vim_insert(True, append=True)
+                return self.return_input_code(28)
 
             elif self.vim_mode and key in self.keybindings.get("insert_mode", ()):
                 self.set_vim_insert(True)

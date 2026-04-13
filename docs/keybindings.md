@@ -136,7 +136,7 @@ Switch tab keybinding is special - `NUM` is placeholder for 1-9 number keys, eg.
 ### Configuring vim mode keybindings
 Keybindings for vim mode are configured in section `[vim_mode_bindings]` can be typed as characters but they must be in "". Eg.: `"edit" = "e"`.  
 Alternatively key codes can be used too. When specifying chained or multiple bindings, key codes must be used!   
-There is one special keybinding, used only in vim mode: `"insert_mode" = "i"`.  
+There are 2 special keybindings, used only in vim mode: `"insert_mode" = "i"` and `"append_mode" = "a"`.  
 Command bindings can also use vim mode bindings, but they must be typed as key codes in quotes!
 
 ### Command keybinding (macros)
@@ -167,7 +167,7 @@ Special commands available only for command-bindings are documented in [Commands
 - `Ctrl+N` - Insert newline in input line (warning `Shift+Enter` doesn't work in terminals)
 - `u` - Undo
 - `Ctrl+R` - Redo
-- `a` - Select all
+- `Alt+A` - Select all
 - `y` - Copy selection
 - `Y` - Cut selection
 - `X` - Delete word
@@ -217,5 +217,4 @@ Special commands available only for command-bindings are documented in [Commands
 - `NUM`- Switch to tab, `NUM` is 1-9.
 - `E` - Open external editor to type message in it
 - `Ctrl+K` - Open command palette and type `goto ` and show recent channels
-- `Alt+Left/Right` - Switch tabs incrementally (next/previous)
-- `Q` - Quit
+- `Alt+Left/Right` - Switch tabs incrementally (ne

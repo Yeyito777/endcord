@@ -272,6 +272,7 @@ command_bindings = {
 vim_mode_bindings = {
     # special
     "insert_mode": "i",
+    "append_mode": "a",
     # tree
     "tree_up": "K",
     "tree_down": "J",
@@ -292,7 +293,6 @@ vim_mode_bindings = {
     "redo": 18,   # Ctrl+R
     "select_word_left": "H",
     "select_word_right": "L",
-    "select_all": "a",
     "copy_sel": "y",
     "cut_sel": "Y",
     "delete_word": "X",
