@@ -1471,8 +1471,11 @@ class TUI():
             self.sync_input_cursor_position()
             self.pending_prompt_action = None
             self.insert_mode = value
-            self.sync_terminal_cursor_state(visible=self.cursor_on if value else False)
             self.set_active_section("main")
+            if not self.disable_drawing:
+                self.draw_input_line()
+            else:
+                self.sync_terminal_cursor_state(visible=self.cursor_on if value else False)
             self.show_cursor()
 
 
