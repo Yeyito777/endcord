@@ -875,11 +875,7 @@ class TUI():
             self.draw_border(self.chat_border_hwyx, top=not(self.have_title), section="main")
         if hasattr(self, "tree_border_hwyx"):
             self.draw_border(self.tree_border_hwyx, top=not(self.have_title_tree) or self.tree_width < 10, section="tree")
-        separator_color = self.color_id_border_active if self.active_section in ("main", "tree") else self.color_id_border_inactive
         with self.lock:
-            self.screen.vline(0, self.tree_hw[1], self.vline, self.screen_hw[0], curses.color_pair(separator_color))
-            if self.have_title and self.have_title_tree:
-                self.screen.addch(0, self.tree_hw[1], self.vline, curses.color_pair(separator_color))
             self.screen.noutrefresh()
             self.need_update.set()
         if self.have_title:
