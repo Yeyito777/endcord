@@ -1021,7 +1021,7 @@ class TUI():
     def get_cursor_character(self, character=" ", cursor_visible=True):
         """Return character used to draw cursor in current vim state."""
         if cursor_visible and self.vim_mode and self.insert_mode:
-            return "|"
+            return "▏"
         return character
 
 
