@@ -2509,7 +2509,7 @@ class TUI():
                 self.tree_index = max(self.tree_selected - (self.tree_hw[0] - 1), 0)
                 self.draw_tree()
 
-        elif key in self.keybindings["tree_down"]:
+        elif key in self.keybindings["tree_down"] or (self.active_section == "tree" and self.vim_mode and not self.insert_mode and key in self.KEYBINDINGS_CHAT_DOWN):
             self.set_active_section("tree")
             if self.tree_selected + 1 < self.tree_clean_len:
                 top_line = self.tree_index + self.tree_hw[0]

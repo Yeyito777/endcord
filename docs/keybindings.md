@@ -156,6 +156,7 @@ Special commands available only for command-bindings are documented in [Commands
 
 ### tree
 - `K/J` - Navigating channel tree
+- When the conversations/tree pane is focused, `k/j` also move through it
 - `Space` - Expand selected categories and servers or enter selected channel
 - `W` - Un/collapse channel with threads in tree
 - `O` - Join/leave selected thread in tree
