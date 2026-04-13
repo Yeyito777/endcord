@@ -227,7 +227,7 @@ class TUI():
         self.forbidden_exact_color_slots.update({46, 196, 208, 233, 255})
         color_utils.set_reserved_color_slots(set())
         tree_bg = config["color_tree_default"][1]
-        self.protected_colors = 21   # first N colors that must not be reused
+        self.protected_colors = 22   # first N colors that must not be reused
         self.init_pair((255, -1))   # white on default
         self.init_pair((233, 255))   # black on white
         self.init_pair(config["color_tree_default"])   # 3
@@ -243,6 +243,7 @@ class TUI():
         self.init_pair(config["color_prompt"])
         self.init_pair(config["color_input_line"])
         self.init_pair(config["color_cursor"])   # 15
+        self.insert_cursor_color_id = self.init_pair(self.build_insert_cursor_color(config["color_cursor"], config["color_input_line"]))   # 16
         self.init_pair(config["color_chat_selected"])
         self.init_pair(config["color_status_line"])
         self.init_pair((46, tree_bg))    # green   # 18
@@ -933,10 +934,36 @@ class TUI():
         self.resize()
 
 
+    def build_insert_cursor_color(self, cursor_color, input_color):
+        """Build beam-style cursor color from block cursor and input colors."""
+        beam_fg = cursor_color[1] if len(cursor_color) >= 2 and cursor_color[1] not in (None, -1) else cursor_color[0]
+        beam_bg = input_color[1] if len(input_color) >= 2 else -1
+        if beam_fg is None:
+            beam_fg = -1
+        if beam_bg is None:
+            beam_bg = -1
+        return [beam_fg, beam_bg]
+
+
+    def get_cursor_on_color_id(self):
+        """Return active cursor color id for current vim state."""
+        if self.vim_mode and self.insert_mode:
+            return self.insert_cursor_color_id
+        return 15
+
+
+    def get_cursor_character(self, character=" ", cursor_visible=True):
+        """Return character used to draw cursor in current vim state."""
+        if cursor_visible and self.vim_mode and self.insert_mode:
+            return "|"
+        return character
+
+
     def set_vim_insert(self, value):
         """Set insert mode for vim mode"""
         if self.vim_mode:
             self.insert_mode = value
+            self.show_cursor()
 
 
     def set_fun(self, fun_lvl):
@@ -1364,10 +1391,11 @@ class TUI():
             character = " "
             pos = 0
             cursor_drawn = False
+            cursor_color_id = self.get_cursor_on_color_id()
             for pos, character in enumerate(line_text):
                 # cursor in the string
                 if not cursor_drawn and self.cursor_pos == pos:
-                    safe_insch(self.win_input_line, 0, self.cursor_pos, character, curses.color_pair(15) | self.attrib_map[15])
+                    safe_insch(self.win_input_line, 0, self.cursor_pos, self.get_cursor_character(character), curses.color_pair(cursor_color_id) | self.attrib_map[cursor_color_id])
                     cursor_drawn = True
                 # selected part of string
                 elif self.input_select_start is not None and selected_start_screen <= pos < selected_end_screen:
@@ -1898,6 +1926,7 @@ class TUI():
             if self.cursor_pos < w:
                 if self.cursor_pos < len(line_text):
                     character = line_text[self.cursor_pos]
+                character = self.get_cursor_character(character, cursor_visible=(color_id == self.get_cursor_on_color_id()))
                 if self.cursor_pos == w - 1:
                     self.win_input_line.insch(0, self.cursor_pos, character, curses.color_pair(color_id) | self.attrib_map[color_id])
                 else:
@@ -1916,7 +1945,7 @@ class TUI():
                 color_id = 14
                 sleep_time = self.blink_cursor_on
             else:
-                color_id = 15
+                color_id = self.get_cursor_on_color_id()
                 sleep_time = self.blink_cursor_off
             self.set_cursor_color(color_id)
             time.sleep(sleep_time)
@@ -1927,7 +1956,7 @@ class TUI():
     def show_cursor(self):
         """Force cursor to be shown on screen and reset blinking"""
         if not self.disable_drawing:
-            self.set_cursor_color(15)
+            self.set_cursor_color(self.get_cursor_on_color_id())
             self.cursor_on = True
             self.hibernate_cursor = 0
 
@@ -2427,7 +2456,7 @@ class TUI():
                     if self.assist_start:
                         self.assist_start = -1
                     if self.vim_mode and self.insert_mode:
-                        self.insert_mode = False
+                        self.set_vim_insert(False)
                         return self.return_input_code(26)
                     return self.return_input_code(5)
                 # sequence (bracketed paste or ALT+KEY)
@@ -2459,7 +2488,7 @@ class TUI():
                     if self.assist_start:
                         self.assist_start = -1
                     if self.vim_mode and self.insert_mode:
-                        self.insert_mode = False
+                        self.set_vim_insert(False)
                         return self.return_input_code(26)
                     return self.return_input_code(5)
 
@@ -2927,7 +2956,7 @@ class TUI():
                 return self.return_input_code(45)
 
             elif self.vim_mode and key in self.keybindings.get("insert_mode", ()):
-                self.insert_mode = True
+                self.set_vim_insert(True)
                 return self.return_input_code(28)
 
             # terminal reserved keys: CTRL+ C, I, J, M, Q, S, Z
