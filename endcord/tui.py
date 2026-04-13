@@ -502,12 +502,12 @@ class TUI():
                 self.need_update.clear()
 
 
-    def flush_updates_now(self):
-        """Synchronously flush pending screen updates."""
-        with self.lock:
-            self.prepare_cursor_for_update()
-            curses.doupdate()
-            self.need_update.clear()
+    def flush_updates_now(self, timeout=0.25):
+        """Wait for the screen update thread to flush pending screen updates."""
+        self.need_update.set()
+        deadline = time.monotonic() + timeout
+        while self.run and self.need_update.is_set() and time.monotonic() < deadline:
+            time.sleep(0.005)
 
 
     def resize(self, redraw_only=False):
@@ -1137,32 +1137,39 @@ class TUI():
 
 
     def uses_terminal_insert_cursor(self):
-        """Return True when insert mode should use the terminal hardware cursor."""
+        """Return True when vim prompt focus should use the terminal hardware cursor."""
         return (
             self.terminal_insert_cursor_supported and
             self.vim_mode and
-            self.insert_mode and
             self.active_section == "main" and
             not self.disable_drawing
         )
 
 
     def sync_terminal_cursor_state(self, visible=None):
-        """Update terminal hardware cursor visibility/style for insert mode."""
+        """Update terminal hardware cursor visibility/style for vim prompt focus."""
         if not self.terminal_insert_cursor_supported:
             return
         use_terminal_cursor = self.uses_terminal_insert_cursor()
-        should_show = use_terminal_cursor and (self.cursor_on if visible is None else visible)
-        target_shape = "bar" if use_terminal_cursor else None
-        if target_shape != self.terminal_cursor_shape and target_shape == "bar":
-            sequence = "\033[6 q"
-            if self.terminal_cursor_color:
-                sequence += f"\033]12;{self.terminal_cursor_color}\033\\"
-            sys.stdout.write(sequence)
-            sys.stdout.flush()
+        if visible is None:
+            should_show = use_terminal_cursor
+        else:
+            should_show = use_terminal_cursor and visible
+        target_shape = None
+        if use_terminal_cursor:
+            target_shape = "bar" if self.insert_mode else "block"
+        if target_shape != self.terminal_cursor_shape:
+            sequence = ""
+            if target_shape == "bar":
+                sequence = "\033[6 q"
+            elif target_shape == "block":
+                sequence = "\033[2 q"
+            if sequence:
+                if self.terminal_cursor_color:
+                    sequence += f"\033]12;{self.terminal_cursor_color}\033\\"
+                sys.stdout.write(sequence)
+                sys.stdout.flush()
             self.terminal_cursor_shape = target_shape
-        elif not use_terminal_cursor:
-            self.terminal_cursor_shape = None
         if should_show != self.hardware_cursor_visible:
             try:
                 curses.curs_set(1 if should_show else 0)
@@ -1990,8 +1997,6 @@ class TUI():
         with self.lock:
             self.sync_input_cursor_position()
             use_terminal_cursor = self.uses_terminal_insert_cursor()
-            if not use_terminal_cursor:
-                self.sync_terminal_cursor_state(visible=False)
             w, start, line_text = self.get_visible_input_line()
 
             # prepare selected range
@@ -2026,13 +2031,7 @@ class TUI():
                         safe_drawch(self.win_input_line, 0, pos, character, curses.color_pair(self.color_id_input_line) | self.attrib_map[self.color_id_input_line])
             self.win_input_line.insch(0, pos + 1, "\n", curses.color_pair(0))
             # cursor at the end of string
-            if use_terminal_cursor:
-                try:
-                    self.win_input_line.move(0, min(max(self.cursor_pos, 0), w - 1))
-                except curses.error:
-                    pass
-                self.sync_terminal_cursor_state()
-            elif not cursor_drawn and self.cursor_pos >= len(line_text):
+            if not use_terminal_cursor and not cursor_drawn and self.cursor_pos >= len(line_text):
                 self.show_cursor()
             self.win_input_line.noutrefresh()
             self.need_update.set()
@@ -2542,13 +2541,10 @@ class TUI():
     def set_cursor_color(self, color_id):
         """Changes cursor color"""
         with self.lock:
-            if self.uses_terminal_insert_cursor() or self.hardware_cursor_visible:
-                self.move_terminal_cursor()
-                self.sync_terminal_cursor_state(visible=(color_id == self.get_cursor_on_color_id()))
+            if self.uses_terminal_insert_cursor():
                 self.win_input_line.noutrefresh()
                 self.need_update.set()
-                if self.uses_terminal_insert_cursor():
-                    return
+                return
             _, _, line_text = self.get_visible_input_line()
             if self.draw_cursor_cell(color_id, line_text):
                 self.win_input_line.noutrefresh()
@@ -2561,6 +2557,13 @@ class TUI():
         while self.run:
             while self.run and self.hibernate_cursor >= 10:
                 time.sleep(self.blink_cursor_on)
+            if self.uses_terminal_insert_cursor():
+                if not self.cursor_on:
+                    self.cursor_on = True
+                    self.need_update.set()
+                self.hibernate_cursor = 0
+                time.sleep(max(self.blink_cursor_on, self.blink_cursor_off))
+                continue
             if self.cursor_on:
                 color_id = self.color_id_input_line
                 sleep_time = self.blink_cursor_on
@@ -2576,9 +2579,13 @@ class TUI():
     def show_cursor(self):
         """Force cursor to be shown on screen and reset blinking"""
         if not self.disable_drawing:
-            self.set_cursor_color(self.get_cursor_on_color_id())
             self.cursor_on = True
             self.hibernate_cursor = 0
+            if self.uses_terminal_insert_cursor():
+                self.sync_input_cursor_position()
+                self.need_update.set()
+            else:
+                self.set_cursor_color(self.get_cursor_on_color_id())
 
 
     def update_status_line(self, text_l, text_r=None, text_l_format=[], text_r_format=[]):
