@@ -2440,8 +2440,8 @@ class TUI():
             if command:
                 return 46
             if self.chat_selected + 1 < len(self.chat_buffer):
-                top_line = self.chat_index + self.chat_hw[0] - 3
-                if top_line + 3 < len(self.chat_buffer) and self.chat_selected >= top_line:
+                top_line = self.chat_index + self.chat_hw[0] - 1
+                if top_line + 1 < len(self.chat_buffer) and self.chat_selected >= top_line:
                     self.chat_index += 1   # move history down
                 self.chat_selected += 1   # move selection up
                 self.draw_chat()
@@ -2451,7 +2451,7 @@ class TUI():
             if command:
                 return 47
             if self.chat_selected >= self.dont_hide_chat_selection:   # if it is -1, selection is hidden
-                if self.chat_index and self.chat_selected <= self.chat_index + 2:   # +2 from status and input lines
+                if self.chat_index and self.chat_selected <= self.chat_index:
                     self.chat_index -= 1   # move history up
                 self.chat_selected -= 1   # move selection down
                 self.draw_chat()
@@ -3340,7 +3340,7 @@ class TUI():
 
         elif self.mouse_in_window(x, y, self.win_chat):
             if up:
-                if self.chat_index + self.chat_hw[0] - 3 + 3 < len(self.chat_buffer):
+                if self.chat_index + self.chat_hw[0] < len(self.chat_buffer):
                     self.chat_index += self.mouse_scroll_sensitivity
                     self.draw_chat()
                 else:
