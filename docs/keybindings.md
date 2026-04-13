@@ -178,6 +178,9 @@ Special commands available only for command-bindings are documented in [Commands
 - `r` - Reply to selected message
 - `e` - Edit selected message
 - `d` - Delete selected message
+- `Ctrl+Y/E` - Scroll chat up/down by one line
+- `Ctrl+U/D` - Scroll chat up/down by half a page
+- `Ctrl+B/F` - Scroll chat up/down by a full page
 - `p` - Toggle reply ping when replying
 - `B` - Scroll back to chat bottom
 - `g` - Go to replied message from selected message

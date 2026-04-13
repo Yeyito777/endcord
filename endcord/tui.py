@@ -1107,6 +1107,48 @@ class TUI():
             self.draw_chat()
 
 
+    def get_chat_page_size(self, half=False):
+        """Return full or half-page scroll size for chat."""
+        page = max(self.chat_hw[0] - 2, 1)
+        if half:
+            return max(page // 2, 1)
+        return page
+
+
+    def scroll_chat_relative(self, amount, move_cursor=True):
+        """Scroll chat by relative amount. Positive values move toward older messages."""
+        if not self.chat_buffer or amount == 0:
+            return
+
+        self.set_active_section("main")
+        max_chat_index = max(len(self.chat_buffer) - self.chat_hw[0], 0)
+
+        if self.chat_selected == -1 or not move_cursor:
+            new_index = min(max(self.chat_index + amount, 0), max_chat_index)
+            if new_index == self.chat_index:
+                if amount > 0:
+                    self.chat_scrolled_top = True
+                return
+            self.chat_index = new_index
+            self.chat_scrolled_top = amount > 0 and self.chat_index >= max_chat_index
+        else:
+            min_amount = -min(self.chat_index, self.chat_selected)
+            max_amount = min(max_chat_index - self.chat_index, len(self.chat_buffer) - 1 - self.chat_selected)
+            amount = min(max(amount, min_amount), max_amount)
+            if amount == 0:
+                if self.chat_index >= max_chat_index:
+                    self.chat_scrolled_top = True
+                return
+            self.chat_index += amount
+            self.chat_selected += amount
+            self.chat_scrolled_top = amount > 0 and self.chat_index >= max_chat_index
+
+        if amount < 0:
+            self.chat_scrolled_top = False
+        if not self.disable_drawing:
+            self.draw_chat()
+
+
     def store_input_selected(self):
         """Get selected text from imput line"""
         input_select_start = self.input_select_start
@@ -2356,6 +2398,24 @@ class TUI():
                     self.chat_index -= 1   # move history up
                 self.chat_selected -= 1   # move selection down
                 self.draw_chat()
+
+        elif (self.vim_mode and not self.insert_mode and not command and self.active_section == "main" and not forum and key in self.keybindings["vim_scroll_up_line"]):
+            self.scroll_chat_relative(1)
+
+        elif (self.vim_mode and not self.insert_mode and not command and self.active_section == "main" and not forum and key in self.keybindings["vim_scroll_down_line"]):
+            self.scroll_chat_relative(-1)
+
+        elif (self.vim_mode and not self.insert_mode and not command and self.active_section == "main" and not forum and key in self.keybindings["vim_scroll_up_half_page"]):
+            self.scroll_chat_relative(self.get_chat_page_size(half=True))
+
+        elif (self.vim_mode and not self.insert_mode and not command and self.active_section == "main" and not forum and key in self.keybindings["vim_scroll_down_half_page"]):
+            self.scroll_chat_relative(-self.get_chat_page_size(half=True))
+
+        elif (self.vim_mode and not self.insert_mode and not command and self.active_section == "main" and not forum and key in self.keybindings["vim_scroll_up_page"]):
+            self.scroll_chat_relative(self.get_chat_page_size())
+
+        elif (self.vim_mode and not self.insert_mode and not command and self.active_section == "main" and not forum and key in self.keybindings["vim_scroll_down_page"]):
+            self.scroll_chat_relative(-self.get_chat_page_size())
 
         elif key in self.keybindings["tree_up"]:
             self.set_active_section("tree")

@@ -303,6 +303,12 @@ vim_mode_bindings = {
     "reply": "r",
     "edit": "e",
     "delete": "d",
+    "vim_scroll_up_line": 25,   # Ctrl+Y
+    "vim_scroll_down_line": 5,   # Ctrl+E
+    "vim_scroll_up_half_page": 21,   # Ctrl+U
+    "vim_scroll_down_half_page": 4,   # Ctrl+D
+    "vim_scroll_up_page": 2,   # Ctrl+B
+    "vim_scroll_down_page": 6,   # Ctrl+F
     "toggle_ping": "p",
     "scroll_bottom": "B",
     "go_replied": "g",
