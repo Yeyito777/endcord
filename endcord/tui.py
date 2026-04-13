@@ -497,6 +497,7 @@ class TUI():
             # here must be delay, otherwise output gets messed up
             with self.lock:
                 time.sleep(self.screen_update_delay)
+                self.prepare_cursor_for_update()
                 curses.doupdate()
                 self.need_update.clear()
 
@@ -504,6 +505,7 @@ class TUI():
     def flush_updates_now(self):
         """Synchronously flush pending screen updates."""
         with self.lock:
+            self.prepare_cursor_for_update()
             curses.doupdate()
             self.need_update.clear()
 
@@ -1183,6 +1185,13 @@ class TUI():
                 self.screen.move(win_y, win_x + cursor_x)
             except curses.error:
                 pass
+
+
+    def prepare_cursor_for_update(self):
+        """Ensure the hardware cursor state is correct before doupdate."""
+        if self.uses_terminal_insert_cursor() or self.hardware_cursor_visible:
+            self.move_terminal_cursor()
+        self.sync_terminal_cursor_state()
 
 
     def get_visible_input_line(self):
@@ -2534,10 +2543,7 @@ class TUI():
         """Changes cursor color"""
         with self.lock:
             if self.uses_terminal_insert_cursor() or self.hardware_cursor_visible:
-                try:
-                    self.win_input_line.move(0, min(max(self.cursor_pos, 0), self.input_hw[1] - 1))
-                except curses.error:
-                    pass
+                self.move_terminal_cursor()
                 self.sync_terminal_cursor_state(visible=(color_id == self.get_cursor_on_color_id()))
                 self.win_input_line.noutrefresh()
                 self.need_update.set()
