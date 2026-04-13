@@ -501,6 +501,13 @@ class TUI():
                 self.need_update.clear()
 
 
+    def flush_updates_now(self):
+        """Synchronously flush pending screen updates."""
+        with self.lock:
+            curses.doupdate()
+            self.need_update.clear()
+
+
     def resize(self, redraw_only=False):
         """Resize screen area and redraw ui"""
         if self.disable_drawing:
@@ -1162,6 +1169,22 @@ class TUI():
             self.hardware_cursor_visible = should_show
 
 
+    def move_terminal_cursor(self):
+        """Move the real terminal cursor to the prompt insert position."""
+        if not self.terminal_insert_cursor_supported:
+            return
+        cursor_x = min(max(self.cursor_pos, 0), self.input_hw[1] - 1)
+        try:
+            self.win_input_line.move(0, cursor_x)
+            self.win_input_line.cursyncup()
+        except curses.error:
+            try:
+                win_y, win_x = self.win_input_line.getbegyx()
+                self.screen.move(win_y, win_x + cursor_x)
+            except curses.error:
+                pass
+
+
     def get_visible_input_line(self):
         """Return currently visible input slice and its width."""
         width = self.input_hw[1]
@@ -1477,6 +1500,8 @@ class TUI():
             else:
                 self.sync_terminal_cursor_state(visible=self.cursor_on if value else False)
             self.show_cursor()
+            if not self.disable_drawing:
+                self.flush_updates_now()
 
 
     def set_fun(self, fun_lvl):
@@ -3022,11 +3047,12 @@ class TUI():
         return None
 
 
-    def return_input_code(self, code):
-        """Clean input line and return input code wit other data"""
+    def return_input_code(self, code, clear_buffer=True):
+        """Return input code with current input state, optionally preserving the buffer."""
         tmp = self.input_buffer
         self.pending_prompt_action = None
-        self.input_buffer = ""
+        if clear_buffer:
+            self.input_buffer = ""
         return tmp, self.chat_selected, self.tree_selected_abs, code
 
 
@@ -3055,6 +3081,8 @@ class TUI():
             self.update_prompt(prompt)
             self.spellcheck()
             self.draw_input_line()
+            if self.uses_terminal_insert_cursor():
+                self.flush_updates_now()
         if clear_delta:
             self.delta_store = []
             self.last_key = None
@@ -3093,7 +3121,7 @@ class TUI():
                         self.assist_start = -1
                     if self.vim_mode and self.insert_mode:
                         self.set_vim_insert(False)
-                        return self.return_input_code(26)
+                        return self.return_input_code(26, clear_buffer=False)
                     return self.return_input_code(5)
                 # sequence (bracketed paste or ALT+KEY)
                 sequence = [27, key]
@@ -3125,7 +3153,7 @@ class TUI():
                         self.assist_start = -1
                     if self.vim_mode and self.insert_mode:
                         self.set_vim_insert(False)
-                        return self.return_input_code(26)
+                        return self.return_input_code(26, clear_buffer=False)
                     return self.return_input_code(5)
 
             # handle chained keybindings
@@ -3214,7 +3242,7 @@ class TUI():
 
             elif (prompt_code := self.handle_vim_prompt_key(key)) is not None:
                 if prompt_code >= 0:
-                    return self.return_input_code(prompt_code)
+                    return self.return_input_code(prompt_code, clear_buffer=(prompt_code not in (26, 28)))
                 if self.enable_autocomplete:
                     selected_completion = 0
 
@@ -3587,11 +3615,11 @@ class TUI():
 
             elif self.vim_mode and key in self.keybindings.get("append_mode", ()):
                 self.set_vim_insert(True, append=True)
-                return self.return_input_code(28)
+                return self.return_input_code(28, clear_buffer=False)
 
             elif self.vim_mode and key in self.keybindings.get("insert_mode", ()):
                 self.set_vim_insert(True)
-                return self.return_input_code(28)
+                return self.return_input_code(28, clear_buffer=False)
 
             # terminal reserved keys: CTRL+ C, I, J, M, Q, S, Z
 
