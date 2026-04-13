@@ -500,8 +500,8 @@ class TUI():
             # here must be delay, otherwise output gets messed up
             with self.lock:
                 time.sleep(self.screen_update_delay)
-                self.prepare_cursor_for_update()
                 curses.doupdate()
+                self.sync_terminal_cursor_state()
                 self.need_update.clear()
 
 
@@ -848,6 +848,8 @@ class TUI():
         self.active_section = section
         if redraw and self.bordered and not self.disable_drawing:
             self.redraw_borders()
+        elif not self.disable_drawing and self.terminal_vim_cursor_supported and self.vim_mode:
+            self.need_update.set()
 
 
     def focus_main_section(self):
@@ -1151,71 +1153,45 @@ class TUI():
 
 
     def sync_terminal_cursor_state(self, visible=None):
-        """Update terminal hardware cursor visibility and shape for vim prompt focus."""
+        """Render terminal hardware cursor visibility, shape, and position."""
         if not self.terminal_vim_cursor_supported:
             return
         use_terminal_cursor = self.uses_terminal_vim_cursor()
         should_show = use_terminal_cursor if visible is None else (use_terminal_cursor and visible)
         target_shape = None
-        if use_terminal_cursor:
+        sequence = ""
+        if should_show:
             target_shape = "bar" if self.insert_mode else "block"
-        if target_shape != self.terminal_cursor_shape:
-            sequence = ""
-            if target_shape == "bar":
-                sequence = "\033[6 q"
-            elif target_shape == "block":
-                sequence = "\033[2 q"
-            elif self.terminal_cursor_shape is not None:
-                sequence = "\033[2 q"
-            if sequence and self.terminal_cursor_color:
-                sequence += f"\033]12;{self.terminal_cursor_color}\033\\"
-            if sequence:
-                sys.stdout.write(sequence)
-                sys.stdout.flush()
-            self.terminal_cursor_shape = target_shape
-        if should_show != self.hardware_cursor_visible:
-            try:
-                curses.curs_set(1 if should_show else 0)
-            except curses.error:
-                pass
-            self.hardware_cursor_visible = should_show
+            if target_shape != self.terminal_cursor_shape:
+                sequence += "\033[6 q" if target_shape == "bar" else "\033[2 q"
+                if self.terminal_cursor_color:
+                    sequence += f"\033]12;{self.terminal_cursor_color}\033\\"
+            if not self.hardware_cursor_visible:
+                sequence += "\033[?25h"
+            self.sync_input_cursor_position()
+            cursor_x = min(max(self.cursor_pos, 0), self.input_hw[1] - 1)
+            win_y, win_x = self.win_input_line.getbegyx()
+            sequence += f"\033[{win_y + 1};{win_x + cursor_x + 1}H"
+        elif self.hardware_cursor_visible:
+            sequence += "\033[?25l"
+        if sequence:
+            sys.stdout.write(sequence)
+            sys.stdout.flush()
+        self.terminal_cursor_shape = target_shape
+        self.hardware_cursor_visible = should_show
 
 
     def reset_terminal_cursor_style(self):
         """Restore terminal cursor shape/color defaults outside the app."""
         if not self.terminal_vim_cursor_supported:
             return
-        sequence = "\033[2 q"
+        sequence = "\033[?25h\033[2 q"
         if self.terminal_cursor_color:
             sequence += "\033]112\033\\"
         sys.stdout.write(sequence)
         sys.stdout.flush()
         self.terminal_cursor_shape = None
         self.hardware_cursor_visible = False
-
-
-    def move_terminal_cursor(self):
-        """Move terminal hardware cursor to the prompt position."""
-        if not self.terminal_vim_cursor_supported:
-            return
-        self.sync_input_cursor_position()
-        cursor_x = min(max(self.cursor_pos, 0), self.input_hw[1] - 1)
-        try:
-            self.win_input_line.move(0, cursor_x)
-            self.win_input_line.cursyncup()
-        except curses.error:
-            try:
-                win_y, win_x = self.win_input_line.getbegyx()
-                self.screen.move(win_y, win_x + cursor_x)
-            except curses.error:
-                pass
-
-
-    def prepare_cursor_for_update(self):
-        """Make hardware prompt cursor state consistent before doupdate."""
-        if self.uses_terminal_vim_cursor():
-            self.move_terminal_cursor()
-        self.sync_terminal_cursor_state()
 
 
     def get_visible_input_line(self):
