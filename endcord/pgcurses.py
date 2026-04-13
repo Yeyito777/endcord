@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import queue
+import re
 import sys
 import threading
 
@@ -172,6 +173,7 @@ event_queue = queue.Queue()
 color_map = [DEFAULT_PAIR] * (COLORS + 1)
 fake_videoresize = pygame.event.Event(pygame.VIDEORESIZE, w=1, h=1)   # used to trigger redraw
 icon = None
+hex_color = re.compile(r"^#?[0-9a-fA-F]{6}$")
 current_icon_index = None
 emoji_font = None
 font_regular = None
@@ -298,6 +300,26 @@ def xterm_to_rgb(x):
         gray = 8 + (x - 232) * 10
         return (gray, gray, gray)
     return (0, 0, 0)
+
+
+
+def parse_rgb_color(value):
+    """Parse #RRGGBB string or RGB tuple/list into RGB tuple."""
+    if isinstance(value, str) and hex_color.fullmatch(value.strip()):
+        color_value = value.strip().lstrip("#")
+        return tuple(int(color_value[i:i+2], 16) for i in (0, 2, 4))
+    if isinstance(value, (list, tuple)) and len(value) == 3 and all(isinstance(channel, int) and 0 <= channel <= 255 for channel in value):
+        return tuple(value)
+    raise ValueError(f"Invalid RGB color: {value}")
+
+
+
+def resolve_rgb_color(value, default_rgb):
+    """Resolve xterm index or exact RGB color to RGB tuple."""
+    if isinstance(value, int):
+        return default_rgb if value <= 0 else xterm_to_rgb(value)
+    return parse_rgb_color(value)
+
 
 
 def is_emoji(ch):
@@ -825,8 +847,8 @@ def doupdate():
 
 def init_pair(pair_id, fg, bg):
     """curses.init_pair clone using pygame"""
-    fg_rgb = DEFAULT_PAIR[0] if fg <= 0 else xterm_to_rgb(fg)
-    bg_rgb = DEFAULT_PAIR[1] if bg <= 0 else xterm_to_rgb(bg)
+    fg_rgb = resolve_rgb_color(fg, DEFAULT_PAIR[0])
+    bg_rgb = resolve_rgb_color(bg, DEFAULT_PAIR[1])
     if pair_id >= len(color_map):
         missing = pair_id + 1 - len(color_map)
         color_map.extend([DEFAULT_PAIR] * missing)
