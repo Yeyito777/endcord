@@ -136,7 +136,7 @@ Switch tab keybinding is special - `NUM` is placeholder for 1-9 number keys, eg.
 ### Configuring vim mode keybindings
 Keybindings for vim mode are configured in section `[vim_mode_bindings]` can be typed as characters but they must be in "". Eg.: `"edit" = "e"`.  
 Alternatively key codes can be used too. When specifying chained or multiple bindings, key codes must be used!   
-There are 2 special keybindings, used only in vim mode: `"insert_mode" = "i"` and `"append_mode" = "a"`.  
+There are 3 special keybindings, used only in vim mode: `"insert_mode" = "i"`, `"append_mode" = "a"`, and `"focus_tree" = 11` (`Ctrl+K`). `Ctrl+J` focus-to-chat is handled specially in terminal mode because it shares a keycode with Enter.  
 Command bindings can also use vim mode bindings, but they must be typed as key codes in quotes!
 
 ### Command keybinding (macros)
@@ -150,6 +150,9 @@ Special commands available only for command-bindings are documented in [Commands
 
 ## Vim mode keybindings
 - `i` - Enter insert mode
+- `a` - Enter insert mode one character to the right (append)
+- `Ctrl+K` - Toggle focus between chat and conversations/tree
+- `Ctrl+J` - Focus chat
 
 ### tree
 - `K/J` - Navigating channel tree

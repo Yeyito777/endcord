@@ -273,6 +273,7 @@ vim_mode_bindings = {
     # special
     "insert_mode": "i",
     "append_mode": "a",
+    "focus_tree": 11,   # Ctrl+K
     # tree
     "tree_up": "K",
     "tree_down": "J",

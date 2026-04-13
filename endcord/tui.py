@@ -823,6 +823,35 @@ class TUI():
             self.redraw_borders()
 
 
+    def focus_main_section(self):
+        """Focus the main chat/input section."""
+        self.set_active_section("main")
+        self.show_cursor()
+
+
+    def focus_tree_section(self):
+        """Focus the conversations/tree section."""
+        self.set_active_section("tree")
+
+
+    def handle_vim_focus_switch(self, key, command=False):
+        """Handle vim-mode focus switching between chat and conversation tree."""
+        if not (self.vim_mode and not self.insert_mode and not command):
+            return False
+        if key in self.keybindings.get("focus_tree", ()):
+            if self.active_section == "tree":
+                self.focus_main_section()
+            else:
+                self.focus_tree_section()
+            return True
+        # Ctrl+J shares a keycode with Enter in many terminals, so only treat it as
+        # focus-to-chat when we are already outside the main chat pane.
+        if key == 10 and self.active_section != "main":
+            self.focus_main_section()
+            return True
+        return False
+
+
     def is_section_active(self, section):
         """Return True when the given section currently has focus."""
         return self.active_section == section
@@ -2697,6 +2726,9 @@ class TUI():
                 self.input_buffer = self.input_buffer[:self.input_index] + "\n" + self.input_buffer[self.input_index:]
                 self.input_index += 1
                 self.add_to_delta_store("\n")
+
+            elif self.handle_vim_focus_switch(key, command=command):
+                continue
 
             elif key in self.KEYBINDINGS_SEND_MESSAGE:
                 if forum:
