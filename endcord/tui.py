@@ -1288,6 +1288,8 @@ class TUI():
             self.input_index = self.input_word_forward(big=True)
         elif direction == "word_end_big":
             self.input_index = self.input_word_end(big=True)
+        if self.vim_mode and not self.insert_mode:
+            self.input_index = self.clamp_input_index_normal(self.input_index)
         self.keep_input_index_on_screen()
         self.input_select_start = None
 
@@ -1383,11 +1385,27 @@ class TUI():
         return None
 
 
+    def clamp_input_index_normal(self, index=None):
+        """Clamp prompt cursor position for vim normal mode like Exocortex."""
+        if index is None:
+            index = self.input_index
+        if len(self.input_buffer) == 0:
+            return 0
+        max_index = len(self.input_buffer) if self.input_buffer[-1] == "\n" else len(self.input_buffer) - 1
+        return min(max(0, index), max_index)
+
+
     def set_vim_insert(self, value, append=False):
         """Set insert mode for vim mode."""
         if self.vim_mode:
             if value and append:
                 self.move_input_cursor_right()
+            elif not value:
+                new_index = self.input_index
+                if new_index > 0 and self.input_buffer[new_index - 1] != "\n":
+                    new_index -= 1
+                self.input_index = self.clamp_input_index_normal(new_index)
+                self.keep_input_index_on_screen()
             self.pending_prompt_action = None
             self.insert_mode = value
             self.set_active_section("main")
@@ -3151,12 +3169,17 @@ class TUI():
                         self.input_line_index += min(INPUT_LINE_JUMP, w - 3)
                     else:
                         self.input_index -= 1
+                    if self.vim_mode and not self.insert_mode:
+                        self.input_index = self.clamp_input_index_normal(self.input_index)
                     self.show_cursor()
                 self.input_select_start = None
                 self.spellcheck()
 
             elif key in self.KEYBINDINGS_INPUT_RIGHT:
                 if self.move_input_cursor_right():
+                    if self.vim_mode and not self.insert_mode:
+                        self.input_index = self.clamp_input_index_normal(self.input_index)
+                        self.keep_input_index_on_screen()
                     self.show_cursor()
                 self.input_select_start = None
                 self.spellcheck()
@@ -3169,6 +3192,8 @@ class TUI():
 
             elif key == curses.KEY_END:
                 self.input_index = len(self.input_buffer)
+                if self.vim_mode and not self.insert_mode:
+                    self.input_index = self.clamp_input_index_normal(self.input_index)
                 self.input_select_start = None
                 self.spellcheck()
 
