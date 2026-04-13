@@ -134,6 +134,22 @@ CAPTCHA_REQUIRED_TEXT = (UNABLE_LOGIN_TEXT, "Captcha is required.", "Login with 
 logger = logging.getLogger(__name__)
 
 
+def secret_service_ready(service_name=APP_NAME):
+    """Check whether secret-tool can talk to a Secret Service backend without printing an error."""
+    try:
+        result = subprocess.run(
+            ["secret-tool", "lookup", "service", service_name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return False
+    return not bool((result.stderr or "").strip())
+
+
+
 def setup_secret_service():
     """Check if secret-tool can be run, and if not, setup gnome-keyring daemon running on dbus"""
     try:
@@ -150,13 +166,7 @@ def setup_secret_service():
 
         # ensure gnome-keyring is running
         # this should start gnome-keyring-daemon
-        result = subprocess.run(
-            ["secret-tool", "lookup", "service", "keyring-check"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
-        if "not activatable" in result.stderr.decode():
+        if not secret_service_ready("keyring-check"):
             logger.warning("Cant use keyring: failed to start 'gnome-keyring' daemon, it is probably not installed")
             return False
 
@@ -1071,6 +1081,9 @@ def manage(profiles_path, external_selected, config, force_open=False):
         if not selected:
             selected = profiles_plain["selected"]
         profiles_plain = profiles_plain["profiles"]
+        if sys.platform == "linux" and have_keyring and not secret_service_ready():
+            have_keyring = False
+            profiles_enc = []
 
     if external_selected:
         selected = external_selected
