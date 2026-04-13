@@ -849,9 +849,9 @@ class TUI():
             else:
                 self.focus_tree_section()
             return True
-        # Ctrl+J shares a keycode with Enter in many terminals, so only treat it as
-        # focus-to-chat when we are already outside the main chat pane.
-        if key == 10 and self.active_section != "main":
+        # Ctrl+J shares a keycode with Enter in many terminals, so avoid stealing it
+        # from tree selection. Only use it as focus-to-chat outside the tree pane.
+        if key == 10 and self.active_section in ("member", "extra"):
             self.focus_main_section()
             return True
         return False

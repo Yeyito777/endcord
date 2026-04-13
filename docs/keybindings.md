@@ -152,7 +152,8 @@ Special commands available only for command-bindings are documented in [Commands
 - `i` - Enter insert mode
 - `a` - Enter insert mode one character to the right (append)
 - `Ctrl+K` - Toggle focus between chat and conversations/tree
-- `Ctrl+J` - Focus chat
+- `Ctrl+J` - Focus chat from other side panes (where terminal distinguishes it from Enter)
+- `Enter` - Select/open the focused conversation in the tree pane
 
 ### tree
 - `K/J` - Navigating channel tree
