@@ -349,6 +349,8 @@ class Endcord:
                 curses.nl()
             curses.echo()
             curses.endwin()
+            sys.stdout.write("\033[2 q\033]112\033\\")
+            sys.stdout.flush()
         except curses.error:
             pass
         sys.exit(0)
