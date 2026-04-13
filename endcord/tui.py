@@ -2051,10 +2051,7 @@ class TUI():
                 if self.cursor_pos < len(line_text):
                     character = line_text[self.cursor_pos]
                 character = self.get_cursor_character(character, cursor_visible=(color_id == self.get_cursor_on_color_id()))
-                if self.cursor_pos == w - 1:
-                    self.win_input_line.insch(0, self.cursor_pos, character, curses.color_pair(color_id) | self.attrib_map[color_id])
-                else:
-                    self.win_input_line.addch(0, self.cursor_pos, character, curses.color_pair(color_id) | self.attrib_map[color_id])
+                safe_insch(self.win_input_line, 0, self.cursor_pos, character, curses.color_pair(color_id) | self.attrib_map[color_id])
                 self.win_input_line.noutrefresh()
                 self.need_update.set()
 
