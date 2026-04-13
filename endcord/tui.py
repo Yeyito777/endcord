@@ -1568,7 +1568,7 @@ class TUI():
                             self.win_tree.addch(y, 4, self.tree_dm_status, curses.color_pair(20))
                 y += 1
                 while y < h:
-                    self.win_tree.insstr(y, 0, "\n", curses.color_pair(1))
+                    self.win_tree.insstr(y, 0, "\n", curses.color_pair(3))
                     y += 1
                 while num < len(self.tree_format):   # continue loop to detect mentions bellow visible area
                     if (self.tree_format[num] % 100) // 10 == 2:
