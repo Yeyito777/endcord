@@ -2472,6 +2472,34 @@ class TUI():
 
     def common_keybindings(self, key, mouse=False, switch=False, command=False, forum=False):
         """Handle keybinding events that can be executed by mouse events"""
+        if self.active_section == "tree" and self.vim_mode and not self.insert_mode:
+            if key in self.KEYBINDINGS_CHAT_UP or key in self.keybindings["tree_up"]:
+                self.set_active_section("tree")
+                if self.tree_selected >= 0:
+                    if self.tree_index and self.tree_selected <= self.tree_index + 2:
+                        self.tree_index -= 1
+                    self.tree_selected -= 1
+                    self.draw_tree()
+                elif self.wrap_around:
+                    tree_end_index = self.get_tree_index(0)
+                    self.tree_selected = tree_end_index
+                    self.tree_index = max(self.tree_selected - (self.tree_hw[0] - 1), 0)
+                    self.draw_tree()
+                return None
+            if key in self.KEYBINDINGS_CHAT_DOWN or key in self.keybindings["tree_down"]:
+                self.set_active_section("tree")
+                if self.tree_selected + 1 < self.tree_clean_len:
+                    top_line = self.tree_index + self.tree_hw[0]
+                    if top_line < self.tree_clean_len and self.tree_selected >= top_line - 3:
+                        self.tree_index += 1
+                    self.tree_selected += 1
+                    self.draw_tree()
+                elif self.wrap_around:
+                    self.tree_selected = 0
+                    self.tree_index = 0
+                    self.draw_tree()
+                return None
+
         if key in self.KEYBINDINGS_CHAT_UP:
             self.set_active_section("main")
             if command:
@@ -2509,7 +2537,7 @@ class TUI():
                 self.tree_index = max(self.tree_selected - (self.tree_hw[0] - 1), 0)
                 self.draw_tree()
 
-        elif key in self.keybindings["tree_down"] or (self.active_section == "tree" and self.vim_mode and not self.insert_mode and key in self.KEYBINDINGS_CHAT_DOWN):
+        elif key in self.keybindings["tree_down"]:
             self.set_active_section("tree")
             if self.tree_selected + 1 < self.tree_clean_len:
                 top_line = self.tree_index + self.tree_hw[0]
