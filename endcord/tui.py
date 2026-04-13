@@ -1021,14 +1021,19 @@ class TUI():
             self.draw_chat()
 
 
-    def set_input_index(self, index):
-        """Set cursor position on input line"""
-        self.set_active_section("main")
-        self.input_index = index
+    def sync_input_cursor_position(self):
+        """Recompute on-screen prompt cursor position from input index and scroll."""
         _, w = self.input_hw
         self.cursor_pos = self.input_index - max(0, len(self.input_buffer) - w + 1 - self.input_line_index)
         self.cursor_pos = max(self.cursor_pos, 0)
         self.cursor_pos = min(w - 1, self.cursor_pos)
+
+
+    def set_input_index(self, index):
+        """Set cursor position on input line"""
+        self.set_active_section("main")
+        self.input_index = index
+        self.sync_input_cursor_position()
         self.input_select_start = None
         self.show_cursor()
 
@@ -1406,6 +1411,7 @@ class TUI():
                     new_index -= 1
                 self.input_index = self.clamp_input_index_normal(new_index)
                 self.keep_input_index_on_screen()
+            self.sync_input_cursor_position()
             self.pending_prompt_action = None
             self.insert_mode = value
             self.set_active_section("main")
@@ -1887,6 +1893,7 @@ class TUI():
     def draw_input_line(self):
         """Draw text input line"""
         with self.lock:
+            self.sync_input_cursor_position()
             w, start, line_text = self.get_visible_input_line()
 
             # prepare selected range
@@ -2964,9 +2971,9 @@ class TUI():
             if not keep_cursor:
                 w += len(self.prompt) - len(prompt)
                 self.input_index = len(self.input_buffer)
-                self.cursor_pos = self.input_index - max(0, len(self.input_buffer) - w + 1 - self.input_line_index)
-                self.cursor_pos = max(self.cursor_pos, 0)
-                self.cursor_pos = min(w - 1, self.cursor_pos)
+            if self.vim_mode and not self.insert_mode:
+                self.input_index = self.clamp_input_index_normal(self.input_index)
+            self.sync_input_cursor_position()
         if not self.disable_drawing:
             self.update_prompt(prompt)
             self.spellcheck()
