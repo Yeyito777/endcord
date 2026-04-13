@@ -35,7 +35,7 @@ DISCORD_CDN_HOST = "cdn.discordapp.com"
 DYN_DISCORD_CDN_HOST = "media.discordapp.net"
 DISCORD_EPOCH = 1420070400
 MAX_CONNECTION_POOL = 10
-MAX_CONNECTION_AGE = 55 * 60  # discord closes keepalive connection after 60 min
+MAX_CONNECTION_AGE = 55 * 30  # discord closes keepalive connection after ?? min
 SEARCH_PARAMS = ("content", "channel_id", "author_id", "mentions", "has", "max_id", "min_id", "pinned", "offset")
 SEARCH_HAS_OPTS = ("link", "embed", "poll", "file", "video", "image", "sound", "sticker", "forward")
 PING_OPTIONS = ["all", "mentions", "nothing", "default"]   # must be list
@@ -229,7 +229,7 @@ class Discord():
                 if not e[1]:
                     entry = e
                     connection = e[0]
-                    # discord closes keepalive connection after 60 min
+                    # discord closes keepalive connection after ?? min
                     if now - e[2] > MAX_CONNECTION_AGE or connection.sock is None:
                         try:
                             connection.close()

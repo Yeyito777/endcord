@@ -31,7 +31,7 @@ except (AssertionError, RuntimeError):
     have_soundcard = False
 
 DISCORD_HOST = "discord.com"
-LOCAL_MEMBER_COUNT = 50   # members per guild, CPU-RAM intensive
+BASE_SOUND_GAIN = 2.0
 VOICE_FLAGS = 2   # ALLOW_VOICE_RECORDING
 UDP_TIMEOUT = 10
 logger = logging.getLogger(__name__)
@@ -46,19 +46,6 @@ CODECS = [
     # {"name":"VP9", "type":"video", "priority":4000, "payload_type":107, "rtx_payload_type":108, "encode":False, "decode":True},
 ]
 rtp_unpacker = struct.Struct(">xxHII")
-OPUS_SILENCE = bytes([0xF8, 0xFF, 0xFE])
-
-
-def strip_rtp_extension(payload):
-    """Remove rtp extension from payload"""
-    if len(payload) < 4:
-        return payload
-    profile = int.from_bytes(payload[0:2], "big")
-    if profile == 0xBEDE:
-        length = int.from_bytes(payload[2:4], "big") * 4
-        return payload[4 + length:]
-    return payload
-
 
 # get speaker
 if have_soundcard:
@@ -70,10 +57,24 @@ if have_soundcard:
 else:
     have_sound = False
 
+
+def volume_to_gain(volume):
+    """Convert volume value 0-200 to gain, above 100 is boost up to x5"""
+    volume = max(min(volume, 200), 0)
+    if volume == 0:
+        return 0.0
+    volume = volume / 100
+    if volume <= 1.0:
+        db = -30.0 + 30.0 * volume
+    else:
+        db = 14 * (volume - 1.0) ** 1.5
+    return BASE_SOUND_GAIN * (10 ** (db / 20.0))
+
+
 class Gateway():
     """Methods for fetching and sending data to Discord voice gateway through websocket"""
 
-    def __init__(self, voice_gateway_data, my_id, mute, user_agent, proxy=None):
+    def __init__(self, voice_gateway_data, my_id, volume_input, volume_output, user_agent, proxy=None):
         self.voice_gateway_data = voice_gateway_data
         self.guild_id = voice_gateway_data["guild_id"]
         self.channel_id = voice_gateway_data["channel_id"]
@@ -92,7 +93,6 @@ class Gateway():
         self.voice_handler = None
         self.voice_handler_thread = None
         self.call_buffer = []
-        self.mute = mute
         self.media_session_id = None
 
         self.dave_session = dave.Session()
@@ -110,6 +110,9 @@ class Gateway():
         self.pending_transition_id = None
         self.known_user_ids = set()
         self.known_user_ids.add(str(my_id))   # fix_davey - uses int ids everywhere
+        self.ssrc_cache = set()
+        self.volume_input = volume_input
+        self.volume_output = volume_output
 
         self.connect()
 
@@ -169,8 +172,19 @@ class Gateway():
     def start_voice_handler(self):
         """Initialize and start voice handler"""
         if not self.voice_handler:
-            self.voice_handler = VoiceHandler(self, self.udp, self.secret_key, self.selected_mode)
+            self.voice_handler = VoiceHandler(
+                self,
+                self.udp,
+                self.secret_key,
+                self.selected_mode,
+                self.volume_input,
+                self.volume_output,
+            )
             self.voice_handler.start()
+
+        while self.ssrc_cache:   # load cached ssrc-id pairs received before voice handler was initialised
+            ssrc, user_id = self.ssrc_cache.pop()
+            self.voice_handler.add_ssrc_mapping(ssrc, user_id)
 
 
     def stop_voice_handler(self):
@@ -208,8 +222,8 @@ class Gateway():
 
     def send_binary(self, opcode, payload):
         """Send a binary websocket message to the gateway"""
-        logger.debug(f"BINARY SENT: op: {opcode}, data: {payload}")
-        logger.info(("BINARY SEND", opcode, payload))
+        logger.debug(f"BINARY SEND: op: {opcode}, data: {payload}")
+        # logger.info(("BINARY SEND", opcode, payload))
         try:
             self.ws.send_binary(struct.pack(">B", opcode) + payload)
         except websocket._exceptions.WebSocketException:
@@ -218,8 +232,8 @@ class Gateway():
 
     def send(self, request):
         """Send data to gateway"""
-        logger.debug(f"SENT: op: {request["op"]}, data: {request}")
-        logger.info(("SEND", request))
+        logger.debug(f"SEND: op: {request["op"]}, data: {request}")
+        # logger.info(("SEND", request))
         try:
             self.ws.send(json.dumps(request))
         except websocket._exceptions.WebSocketException:
@@ -265,8 +279,8 @@ class Gateway():
                     break
                 self.sequence = max(response.get("seq", 0), self.sequence)
 
-            logger.debug(f"RECEIVED: op: {opcode}, data: {response}")
-            logger.info(("RECEIVE", opcode, response))
+            logger.debug(f"RECEIVE: op: {opcode}, data: {response}")
+            # logger.info(("RECEIVE", opcode, response))
 
             if opcode == 6:
                 self.heartbeat_received = True
@@ -338,10 +352,12 @@ class Gateway():
                     "user_id": data["user_id"],
                     "speaking": bool(data["user_id"]),
                 })
-                ssrc = data.get("ssrc")
-                if ssrc and self.voice_handler:
-                    self.voice_handler.add_ssrc_mapping(int(ssrc), int(data["user_id"]))
-                    # self.voice_handler.ssrc_to_userid[ssrc] = int(data["user_id"])   # fix_davey
+                if "ssrc" in data:
+                    if self.voice_handler:
+                        self.voice_handler.add_ssrc_mapping(int(data["ssrc"]), int(data["user_id"]))
+                        # self.voice_handler.ssrc_to_userid[ssrc] = int(data["user_id"])   # fix_davey
+                    else:   # add to cache until voice_handler object is created
+                        self.ssrc_cache.add((int(data["ssrc"]), int(data["user_id"])))
 
             # DAVE OPCODES
             elif opcode == 21:  # DAVE_PROTOCOL_PREPARE_TRANSITION
@@ -596,16 +612,18 @@ class Gateway():
         return self.media_session_id
 
 
-    def set_mute(self, state):
+    def set_volumes(self, volume_input, volume_output):
         """Set muted state, will stop recording and sending sound"""
-        self.mute = state
-
+        self.volume_input = volume_input
+        self.volume_output = volume_output
+        if self.voice_handler:
+            self.voice_handler.set_volumes(volume_input, volume_output)
 
 
 class VoiceHandler:
     """Voice call sound receiver and transmitter, player and recorder"""
 
-    def __init__(self, gateway, udp, secret_key, encryption_mode):
+    def __init__(self, gateway, udp, secret_key, encryption_mode, volume_input, volume_output):
         self.gateway = gateway
         self.udp = udp
         self.secret_key = bytes(secret_key)
@@ -615,6 +633,8 @@ class VoiceHandler:
         self.ssrc_to_userid = {}
         self.audio_queue = queue.Queue(maxsize=10)
         self.opus_decoder = av.codec.CodecContext.create("opus", "r")
+        self.gain_input = volume_to_gain(volume_input)
+        self.gain_output = volume_to_gain(volume_output)
 
 
     def start(self):
@@ -645,6 +665,12 @@ class VoiceHandler:
             self.udp.close()
         except Exception:
             pass
+
+
+    def set_volumes(self, volume_input, volume_output):
+        """Set muted state, will stop recording and sending sound"""
+        self.gain_input = volume_to_gain(volume_input)
+        self.gain_output = volume_to_gain(volume_output)
 
 
     def update_ratchets(self, session):
@@ -689,7 +715,8 @@ class VoiceHandler:
             data = bytearray(data)
             sequence, timestamp, ssrc = rtp_unpacker.unpack_from(data[:12])
             cutoff = 12 + (data[0] & 0b00001111) * 4
-            if data[0] & 0b00010000:
+            has_extension = data[0] & 0b00010000
+            if has_extension:
                 cutoff += 4
             header = data[:cutoff]
             counter = data[-4:]
@@ -713,23 +740,24 @@ class VoiceHandler:
             except Exception as e:
                 logger.error(f"Decryption failed; mode: {self.mode}; error: {e}")
                 continue
-            payload = strip_rtp_extension(payload)
+
+            # strip RTP extension body
+            if has_extension:
+                ext_body_len = int.from_bytes(data[cutoff - 2:cutoff], "big") * 4
+                payload = payload[ext_body_len:]
 
             # DAVE
             if self.gateway.dave_protocol_version > 0:
                 if not self.gateway.dave_session.has_established_group():
                     continue
-                is_dave_encrypted = len(payload) >= 2 and payload[-2] == 0xFA and payload[-1] == 0xFA
-                if is_dave_encrypted:
-                    decryptor = self.ssrc_to_decryptor.get(ssrc)
-                    if decryptor is None:
-                        logger.debug(f"Unknown ssrc {ssrc}, no decryptor yet")
-                        continue
-                    result = decryptor.decrypt(dave.MediaType.audio, payload)
-                    if result is None:
-                        continue
-                    payload = result
-                # else - just try opus decoding
+                decryptor = self.ssrc_to_decryptor.get(ssrc)
+                if decryptor is None:
+                    logger.debug(f"Unknown ssrc {ssrc}")
+                    continue
+                result = decryptor.decrypt(dave.MediaType.audio, bytes(payload))
+                if result is None:
+                    continue
+                payload = result
 
             # is_dave_encrypted = len(payload) >= 2 and payload[-2] == 0xFA and payload[-1] == 0xFA   # fix_davey
             # if self.gateway.dave_protocol_version > 0 and self.dave_session.ready and is_dave_encrypted:
@@ -744,14 +772,14 @@ class VoiceHandler:
             #         logger.debug(f"Unknown ssrc {ssrc}")
             #         continue
 
-        # opus
-        try:
-            av_packet = av.packet.Packet(payload)
-            frames = self.opus_decoder.decode(av_packet)
-            for frame in frames:
-                self.audio_queue.put(frame)
-        except Exception as e:
-            logger.error(f"PyAV opus decoding failed. Error: {e}")
+            # opus
+            try:
+                av_packet = av.packet.Packet(payload)
+                frames = self.opus_decoder.decode(av_packet)
+                for frame in frames:
+                    self.audio_queue.put(frame)
+            except Exception as e:
+                logger.error(f"PyAV opus decoding failed. Error: {e}")
 
         self.gateway.disconnect()
 
@@ -763,4 +791,6 @@ class VoiceHandler:
                 frame = self.audio_queue.get()
                 if frame is None:
                     break
-                stream.play(frame.to_ndarray().astype("float32").T)
+                audio = frame.to_ndarray().astype("float32").T
+                audio *= self.gain_output
+                stream.play(audio)
