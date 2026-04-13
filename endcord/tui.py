@@ -842,6 +842,35 @@ class TUI():
         self.set_active_section("tree")
 
 
+    def get_focus_cycle_sections(self):
+        """Return visible focusable sections in carousel order."""
+        sections = ["tree", "main"]
+        if self.win_extra_window:
+            sections.append("extra")
+        if self.win_member_list:
+            sections.append("member")
+        return sections
+
+
+    def cycle_focus_section(self, direction):
+        """Move focus through visible sections, wrapping around."""
+        sections = self.get_focus_cycle_sections()
+        if not sections:
+            return False
+        try:
+            index = sections.index(self.active_section)
+        except ValueError:
+            index = 0
+        next_section = sections[(index + direction) % len(sections)]
+        if next_section == "main":
+            self.focus_main_section()
+        elif next_section == "tree":
+            self.focus_tree_section()
+        else:
+            self.set_active_section(next_section)
+        return True
+
+
     def is_send_message_key(self, key):
         """Return True when key should behave like Enter/send."""
         if self.distinguish_ctrl_j_enter and key == 13:
@@ -857,18 +886,13 @@ class TUI():
 
 
     def handle_vim_focus_switch(self, key, command=False):
-        """Handle vim-mode focus switching between chat and conversation tree."""
+        """Handle vim-mode focus switching between visible UI sections."""
         if not (self.vim_mode and not self.insert_mode and not command):
             return False
         if key in self.keybindings.get("focus_tree", ()):
-            if self.active_section == "tree":
-                self.focus_main_section()
-            else:
-                self.focus_tree_section()
-            return True
-        if key == 10 and self.active_section != "main":
-            self.focus_main_section()
-            return True
+            return self.cycle_focus_section(-1)
+        if key == 10:
+            return self.cycle_focus_section(1)
         return False
 
 
