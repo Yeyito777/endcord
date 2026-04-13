@@ -134,14 +134,30 @@ CAPTCHA_REQUIRED_TEXT = (UNABLE_LOGIN_TEXT, "Captcha is required.", "Login with 
 logger = logging.getLogger(__name__)
 
 
+def run_secret_tool(*args, input_text=None, stdout=None, stderr=None, check=False):
+    """Run secret-tool with consistent text-mode subprocess options."""
+    command = ["secret-tool", *args]
+    kwargs = {
+        "text": True,
+        "check": check,
+    }
+    if input_text is not None:
+        kwargs["input"] = input_text
+    if stdout is not None:
+        kwargs["stdout"] = stdout
+    if stderr is not None:
+        kwargs["stderr"] = stderr
+    return subprocess.run(command, **kwargs)
+
+
+
 def secret_service_ready(service_name=APP_NAME):
     """Check whether secret-tool can talk to a Secret Service backend without printing an error."""
     try:
-        result = subprocess.run(
-            ["secret-tool", "lookup", "service", service_name],
+        result = run_secret_tool(
+            "lookup", "service", service_name,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
-            text=True,
             check=False,
         )
     except OSError:
@@ -181,10 +197,11 @@ def load_secret():
     """Try to load profiles from system keyring"""
     if sys.platform == "linux":
         try:
-            result = subprocess.run([
-                "secret-tool", "lookup",
-                "service", APP_NAME,
-                ], capture_output=True, text=True, check=True,
+            result = run_secret_tool(
+                "lookup", "service", APP_NAME,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
             )
             return result.stdout.strip()
         except subprocess.CalledProcessError:
@@ -217,13 +234,16 @@ def save_secret(profiles):
     """Save profiles to system keyring"""
     if sys.platform == "linux":
         try:
-            subprocess.run([
-                "secret-tool", "store",
-                "--label=" + f"{APP_NAME} profiles",
-                "service", APP_NAME,
-                ], input=profiles.encode(), check=True,
+            result = run_secret_tool(
+                "store", "--label=" + f"{APP_NAME} profiles", "service", APP_NAME,
+                input_text=profiles,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                check=False,
             )
-        except subprocess.CalledProcessError as e:
+            if result.returncode:
+                logger.error(f"secret-tool error: {(result.stderr or '').strip() or result.returncode}")
+        except OSError as e:
             logger.error(f"secret-tool error: {e}")
 
     elif sys.platform == "win32":
@@ -253,12 +273,13 @@ def remove_secret():
     """Remove profiles from system keyring"""
     if sys.platform == "linux":
         try:
-            subprocess.run([
-                "secret-tool", "clear",
-                "service", APP_NAME,
-                ], check=True,
+            run_secret_tool(
+                "clear", "service", APP_NAME,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
             )
-        except subprocess.CalledProcessError:
+        except OSError:
             pass
 
     elif sys.platform == "win32":

@@ -622,10 +622,7 @@ class TUI():
         if self.win_extra_window:   # redraw borders for extra window
             extra_window_hwyx = self.win_extra_window.getmaxyx() + self.win_extra_window.getbegyx()
             self.draw_border(extra_window_hwyx, top=False, bot=False, section="extra")
-            y, x = extra_window_hwyx[2], extra_window_hwyx[3]
-            color_id = self.get_section_border_color_id("extra")
-            self.screen.addstr(y, x - 1, self.corner_ul, curses.color_pair(color_id))
-            self.screen.addstr(y, x + extra_window_hwyx[1], self.corner_ur, curses.color_pair(color_id))
+            self.draw_extra_window_border_caps(extra_window_hwyx)
         self.draw_member_list(self.member_list, self.member_list_format, force=True, clean=not(redraw_only))
         self.draw_chat()
         self.screen.noutrefresh()
@@ -810,7 +807,7 @@ class TUI():
 
     def get_section_border_color_id(self, section):
         """Return border color id for section based on active focus."""
-        if section and self.active_section == section:
+        if section and self.is_section_active(section):
             return self.color_id_border_active
         return self.color_id_border_inactive
 
@@ -824,6 +821,19 @@ class TUI():
         self.active_section = section
         if redraw and self.bordered and not self.disable_drawing:
             self.redraw_borders()
+
+
+    def is_section_active(self, section):
+        """Return True when the given section currently has focus."""
+        return self.active_section == section
+
+
+    def draw_extra_window_border_caps(self, extra_window_hwyx, section="extra"):
+        """Draw the two top corner caps used by the bordered extra window."""
+        y, x = extra_window_hwyx[2], extra_window_hwyx[3]
+        color_id = self.get_section_border_color_id(section)
+        self.screen.addstr(y, x - 1, self.corner_ul, curses.color_pair(color_id))
+        self.screen.addstr(y, x + extra_window_hwyx[1], self.corner_ur, curses.color_pair(color_id))
 
 
     def redraw_borders(self):
@@ -854,10 +864,7 @@ class TUI():
         if self.win_extra_window:
             extra_window_hwyx = self.win_extra_window.getmaxyx() + self.win_extra_window.getbegyx()
             self.draw_border(extra_window_hwyx, top=False, bot=False, section="extra")
-            y, x = extra_window_hwyx[2], extra_window_hwyx[3]
-            color_id = self.get_section_border_color_id("extra")
-            self.screen.addstr(y, x - 1, self.corner_ul, curses.color_pair(color_id))
-            self.screen.addstr(y, x + extra_window_hwyx[1], self.corner_ur, curses.color_pair(color_id))
+            self.draw_extra_window_border_caps(extra_window_hwyx)
             self.screen.noutrefresh()
             self.need_update.set()
 
@@ -1023,6 +1030,29 @@ class TUI():
         return [beam_fg, beam_bg]
 
 
+    def get_visible_input_line(self):
+        """Return currently visible input slice and its width."""
+        width = self.input_hw[1]
+        start = max(0, len(self.input_buffer) - width + 1 - self.input_line_index)
+        end = start + width - 1
+        return width, start, self.input_buffer[start:end].replace("\n", "␤")
+
+
+    def draw_cursor_cell(self, color_id, line_text=None):
+        """Draw cursor at current position using current vim-mode cursor glyph."""
+        width = self.input_hw[1]
+        if self.cursor_pos >= width:
+            return False
+        if line_text is None:
+            _, _, line_text = self.get_visible_input_line()
+        character = " "
+        if self.cursor_pos < len(line_text):
+            character = line_text[self.cursor_pos]
+        character = self.get_cursor_character(character, cursor_visible=(color_id == self.get_cursor_on_color_id()))
+        safe_drawch(self.win_input_line, 0, self.cursor_pos, character, curses.color_pair(color_id) | self.attrib_map[color_id])
+        return True
+
+
     def get_cursor_on_color_id(self):
         """Return active cursor color id for current vim state."""
         if self.vim_mode and self.insert_mode:
@@ -1125,6 +1155,26 @@ class TUI():
         if half:
             return max(page // 2, 1)
         return page
+
+
+    def handle_vim_chat_scroll(self, key, command=False, forum=False):
+        """Handle vim-style chat scrolling shortcuts in normal mode."""
+        if not (self.vim_mode and not self.insert_mode and not command and self.active_section == "main" and not forum):
+            return False
+
+        scroll_amounts = (
+            ("vim_scroll_up_line", 1),
+            ("vim_scroll_down_line", -1),
+            ("vim_scroll_up_half_page", self.get_chat_page_size(half=True)),
+            ("vim_scroll_down_half_page", -self.get_chat_page_size(half=True)),
+            ("vim_scroll_up_page", self.get_chat_page_size()),
+            ("vim_scroll_down_page", -self.get_chat_page_size()),
+        )
+        for binding_name, amount in scroll_amounts:
+            if key in self.keybindings[binding_name]:
+                self.scroll_chat_relative(amount)
+                return True
+        return False
 
 
     def scroll_chat_relative(self, amount, move_cursor=True):
@@ -1500,16 +1550,12 @@ class TUI():
     def draw_input_line(self):
         """Draw text input line"""
         with self.lock:
-            w = self.input_hw[1]
-            # show only part of line when longer than screen
-            start = max(0, len(self.input_buffer) - w + 1 - self.input_line_index)
-            end = start + w - 1
-            line_text = self.input_buffer[start:end].replace("\n", "␤")
+            w, start, line_text = self.get_visible_input_line()
 
             # prepare selected range
             if self.input_select_start is not None:
-                selected_start_screen = self.input_select_start - max(0, len(self.input_buffer) - w + 1 - self.input_line_index)
-                selected_end_screen = self.input_select_end - max(0, len(self.input_buffer) - w + 1 - self.input_line_index)
+                selected_start_screen = self.input_select_start - start
+                selected_end_screen = self.input_select_end - start
                 if selected_start_screen > selected_end_screen:
                     # swap so start is always left side
                     selected_start_screen, selected_end_screen = selected_end_screen, selected_start_screen
@@ -1525,7 +1571,7 @@ class TUI():
             for pos, character in enumerate(line_text):
                 # cursor in the string
                 if not cursor_drawn and self.cursor_pos == pos:
-                    safe_drawch(self.win_input_line, 0, self.cursor_pos, self.get_cursor_character(character), curses.color_pair(cursor_color_id) | self.attrib_map[cursor_color_id])
+                    self.draw_cursor_cell(cursor_color_id, line_text)
                     cursor_drawn = True
                 # selected part of string
                 elif self.input_select_start is not None and selected_start_screen <= pos < selected_end_screen:
@@ -1864,10 +1910,7 @@ class TUI():
                     self.draw_member_list(self.member_list, self.member_list_format, force=True)
                     if self.bordered:
                         self.draw_border(extra_window_hwyx, top=False, bot=False, section="extra")
-                        y, x = extra_window_hwyx[2], extra_window_hwyx[3]
-                        color_id = self.get_section_border_color_id("extra")
-                        self.screen.addstr(y, x - 1, self.corner_ul, curses.color_pair(color_id))
-                        self.screen.addstr(y, x + extra_window_hwyx[1], self.corner_ur, curses.color_pair(color_id))
+                        self.draw_extra_window_border_caps(extra_window_hwyx)
                         self.screen.noutrefresh()
                         self.draw_status_line()
 
@@ -2054,16 +2097,8 @@ class TUI():
     def set_cursor_color(self, color_id):
         """Changes cursor color"""
         with self.lock:
-            w = self.input_hw[1]
-            start = max(0, len(self.input_buffer) - w + 1 - self.input_line_index)
-            end = start + w - 1
-            line_text = self.input_buffer[start:end].replace("\n", "␤")
-            character = " "
-            if self.cursor_pos < w:
-                if self.cursor_pos < len(line_text):
-                    character = line_text[self.cursor_pos]
-                character = self.get_cursor_character(character, cursor_visible=(color_id == self.get_cursor_on_color_id()))
-                safe_drawch(self.win_input_line, 0, self.cursor_pos, character, curses.color_pair(color_id) | self.attrib_map[color_id])
+            _, _, line_text = self.get_visible_input_line()
+            if self.draw_cursor_cell(color_id, line_text):
                 self.win_input_line.noutrefresh()
                 self.need_update.set()
 
@@ -2295,8 +2330,7 @@ class TUI():
         """Spellcheck words visible on screen"""
         if not self.input_buffer or self.enable_autocomplete or self.bracket_paste:
             return
-        w = self.input_hw[1]
-        line_start = max(0, len(self.input_buffer) - w + 1 - self.input_line_index)
+        w, line_start, _ = self.get_visible_input_line()
         # first space before line_start in self.input_buffer
         if split_char_in(self.input_buffer[:line_start]):
             range_word_start = len(rersplit_0(self.input_buffer[:line_start])) + bool(line_start)
@@ -2408,23 +2442,8 @@ class TUI():
                 self.chat_selected -= 1   # move selection down
                 self.draw_chat()
 
-        elif (self.vim_mode and not self.insert_mode and not command and self.active_section == "main" and not forum and key in self.keybindings["vim_scroll_up_line"]):
-            self.scroll_chat_relative(1)
-
-        elif (self.vim_mode and not self.insert_mode and not command and self.active_section == "main" and not forum and key in self.keybindings["vim_scroll_down_line"]):
-            self.scroll_chat_relative(-1)
-
-        elif (self.vim_mode and not self.insert_mode and not command and self.active_section == "main" and not forum and key in self.keybindings["vim_scroll_up_half_page"]):
-            self.scroll_chat_relative(self.get_chat_page_size(half=True))
-
-        elif (self.vim_mode and not self.insert_mode and not command and self.active_section == "main" and not forum and key in self.keybindings["vim_scroll_down_half_page"]):
-            self.scroll_chat_relative(-self.get_chat_page_size(half=True))
-
-        elif (self.vim_mode and not self.insert_mode and not command and self.active_section == "main" and not forum and key in self.keybindings["vim_scroll_up_page"]):
-            self.scroll_chat_relative(self.get_chat_page_size())
-
-        elif (self.vim_mode and not self.insert_mode and not command and self.active_section == "main" and not forum and key in self.keybindings["vim_scroll_down_page"]):
-            self.scroll_chat_relative(-self.get_chat_page_size())
+        elif self.handle_vim_chat_scroll(key, command=command, forum=forum):
+            pass
 
         elif key in self.keybindings["tree_up"]:
             self.set_active_section("tree")
