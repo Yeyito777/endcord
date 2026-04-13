@@ -93,6 +93,18 @@ def safe_insch(screen, y, x, character, color):
         screen.insstr(y, x, character, color)
 
 
+
+def safe_drawch(screen, y, x, character, color):
+    """Safely draw a character without insert-shifting the rest of the line."""
+    try:
+        screen.addch(y, x, character, color)
+    except (OverflowError, UnicodeEncodeError):
+        try:
+            screen.addstr(y, x, character, color)
+        except curses.error:
+            safe_insch(screen, y, x, character, color)
+
+
 def select_word(text, index):
     """Select word at index position"""
     if index < 0 or index >= len(text):
@@ -1513,7 +1525,7 @@ class TUI():
             for pos, character in enumerate(line_text):
                 # cursor in the string
                 if not cursor_drawn and self.cursor_pos == pos:
-                    safe_insch(self.win_input_line, 0, self.cursor_pos, self.get_cursor_character(character), curses.color_pair(cursor_color_id) | self.attrib_map[cursor_color_id])
+                    safe_drawch(self.win_input_line, 0, self.cursor_pos, self.get_cursor_character(character), curses.color_pair(cursor_color_id) | self.attrib_map[cursor_color_id])
                     cursor_drawn = True
                 # selected part of string
                 elif self.input_select_start is not None and selected_start_screen <= pos < selected_end_screen:
@@ -2051,7 +2063,7 @@ class TUI():
                 if self.cursor_pos < len(line_text):
                     character = line_text[self.cursor_pos]
                 character = self.get_cursor_character(character, cursor_visible=(color_id == self.get_cursor_on_color_id()))
-                safe_insch(self.win_input_line, 0, self.cursor_pos, character, curses.color_pair(color_id) | self.attrib_map[color_id])
+                safe_drawch(self.win_input_line, 0, self.cursor_pos, character, curses.color_pair(color_id) | self.attrib_map[color_id])
                 self.win_input_line.noutrefresh()
                 self.need_update.set()
 
