@@ -222,6 +222,9 @@ class TUI():
         self.spellchecker = peripherals.SpellCheck(config["aspell_mode"], config["aspell_lang"])
         acs_map = acs.get_map()
         curses.use_default_colors()
+        self.distinguish_ctrl_j_enter = hasattr(curses, "nonl") and not uses_pgcurses
+        if self.distinguish_ctrl_j_enter:
+            curses.nonl()
         curses.curs_set(0)   # using custom cursor
         curses.mousemask(curses.ALL_MOUSE_EVENTS)
         curses.mouseinterval(0)
@@ -839,6 +842,20 @@ class TUI():
         self.set_active_section("tree")
 
 
+    def is_send_message_key(self, key):
+        """Return True when key should behave like Enter/send."""
+        if self.distinguish_ctrl_j_enter and key == 13:
+            return True
+        return key in self.KEYBINDINGS_SEND_MESSAGE and not (self.distinguish_ctrl_j_enter and key == 10)
+
+
+    def is_extra_select_key(self, key):
+        """Return True when key should select the current extra-window item."""
+        if key in self.keybindings["extra_select"]:
+            return True
+        return self.distinguish_ctrl_j_enter and key == "ALT+13" and "ALT+10" in self.keybindings["extra_select"]
+
+
     def handle_vim_focus_switch(self, key, command=False):
         """Handle vim-mode focus switching between chat and conversation tree."""
         if not (self.vim_mode and not self.insert_mode and not command):
@@ -849,9 +866,7 @@ class TUI():
             else:
                 self.focus_tree_section()
             return True
-        # Ctrl+J shares a keycode with Enter in many terminals, so avoid stealing it
-        # from tree selection. Only use it as focus-to-chat outside the tree pane.
-        if key == 10 and self.active_section in ("member", "extra"):
+        if key == 10 and self.active_section != "main":
             self.focus_main_section()
             return True
         return False
@@ -2763,10 +2778,16 @@ class TUI():
                 self.input_index += 1
                 self.add_to_delta_store("\n")
 
+            elif self.active_section == "tree" and not self.insert_mode and self.is_send_message_key(key):
+                code = self.common_keybindings(self.keybindings["tree_select"][0], command=command, forum=forum)
+                if code is not None:
+                    return self.return_input_code(code)
+                continue
+
             elif self.handle_vim_focus_switch(key, command=command):
                 continue
 
-            elif key in self.KEYBINDINGS_SEND_MESSAGE:
+            elif self.is_send_message_key(key):
                 if forum:
                     self.input_index = 0
                     self.input_line_index = 0
@@ -3167,7 +3188,7 @@ class TUI():
                 self.extra_selected = -1
                 return self.return_input_code(25)
 
-            elif key in self.keybindings["extra_select"]:
+            elif self.is_extra_select_key(key):
                 return self.return_input_code(27)
 
             elif key in self.keybindings["search"] and not forum:
