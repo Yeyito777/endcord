@@ -202,9 +202,9 @@ def deduplicate_keybindings(keybindings_a, keybindings_b, command=False):
                 keybindings[key] = None
 
     def dedupe_value_command(dedupe_value, keybindings):
-        key = str(dedupe_value)
-        if key in keybindings:
-            del keybindings[key]
+        for key, value in keybindings.items():
+            if key == str(dedupe_value):
+                del keybindings[key]
 
     if command:
         deduplicate_value = dedupe_value_command

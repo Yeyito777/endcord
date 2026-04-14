@@ -42,12 +42,8 @@ def sigint_handler(_signum, _frame):
     try:
         # in case curses.wrapper doesnt restore terminal
         curses.nocbreak()
-        if hasattr(curses, "nl"):
-            curses.nl()
         curses.echo()
         curses.endwin()
-        sys.stdout.write("\033[?25h\033[2 q\033]112\033\\")
-        sys.stdout.flush()
     except curses.error:
         pass
     sys.exit(0)

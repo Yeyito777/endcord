@@ -242,9 +242,6 @@ keybindings = {
     "media_replay": 122,   # Z
     "media_seek_forward": 261,   # Right
     "media_seek_backward": 260,   # Left
-    "media_volume_up": 259,   # Up
-    "media_volume_down": 258,   # Down
-
     # other
     "command_palette": 31,   # Ctrl+/
     "cancel": 24,   # Ctrl+X
@@ -272,8 +269,6 @@ command_bindings = {
 vim_mode_bindings = {
     # special
     "insert_mode": "i",
-    "append_mode": "a",
-    "focus_tree": 11,   # Ctrl+K
     # tree
     "tree_up": "K",
     "tree_down": "J",
@@ -294,6 +289,7 @@ vim_mode_bindings = {
     "redo": 18,   # Ctrl+R
     "select_word_left": "H",
     "select_word_right": "L",
+    "select_all": "a",
     "copy_sel": "y",
     "cut_sel": "Y",
     "delete_word": "X",
@@ -304,12 +300,6 @@ vim_mode_bindings = {
     "reply": "r",
     "edit": "e",
     "delete": "d",
-    "vim_scroll_up_line": 25,   # Ctrl+Y
-    "vim_scroll_down_line": 5,   # Ctrl+E
-    "vim_scroll_up_half_page": 21,   # Ctrl+U
-    "vim_scroll_down_half_page": 4,   # Ctrl+D
-    "vim_scroll_up_page": 2,   # Ctrl+B
-    "vim_scroll_down_page": 6,   # Ctrl+F
     "toggle_ping": "p",
     "scroll_bottom": "B",
     "go_replied": "g",

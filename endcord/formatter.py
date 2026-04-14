@@ -2350,11 +2350,11 @@ def generate_extra_line_ring(caller_name, max_len, bordered):
     return shortened_str + right_text
 
 
-def generate_extra_line_call(call_participants, volume_in, volume_out, max_len, bordered):
+def generate_extra_line_call(call_participants, muted, max_len, bordered):
     """Generate extra line containing iformation about ongoing call"""
     max_len = max_len - bordered * 3
     left_text = "In the call: You"
-    right_text = f"[I:{(str(volume_in)+"%").center(4)} O:{(str(volume_out)+"%").center(4)}] [Leave]"
+    right_text = f"[{"Unmute" if muted else "Mute"}] [Leave]"
 
     for participant in call_participants:
         left_text += f", {participant["name"]}"

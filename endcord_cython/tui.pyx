@@ -25,7 +25,6 @@ cpdef void draw_chat(
     int chat_selected,
     list attrib_map,
     int color_default,
-    int chat_selected_color_id,
 ):
     cdef int num, pos
     cdef int line_idx
@@ -51,22 +50,17 @@ cpdef void draw_chat(
         line = chat_buffer[line_idx]
         if num == chat_selected - chat_index:
             fill_len = w - len(line)
-            win_chat.insstr(y, 0, line + (" " * fill_len) + "\n", curses.color_pair(chat_selected_color_id))
+            win_chat.insstr(y, 0, line + (" " * fill_len) + "\n", curses.color_pair(16))
         else:
-            if num < len(chat_format) and chat_format[num]:
-                line_format = chat_format[num]
-                default_color_id = line_format[0][0]
-                format_slice = line_format[1:]
-            else:
-                default_color_id = color_default
-                format_slice = ()
+            line_format = chat_format[num]
+            default_color_id = line_format[0][0]
             # filled with spaces so background is drawn all the way
             default_color = curses.color_pair(default_color_id) | attrib_map[default_color_id]
             win_chat.insstr(y, 0, " " * w + "\n", curses.color_pair(default_color_id))
 
             for pos in range(min(len(line), w)):
                 character = line[pos]
-                for format_part in format_slice:
+                for format_part in line_format[1:]:
                     color = format_part[0]
                     start = format_part[1]
                     end = format_part[2]

@@ -18,7 +18,7 @@ It is built with Python (this [doesnt mean its slow](#note-on-python-performance
 [More screenshots](https://github.com/sparklost/endcord/blob/main/.github/screenshots.md).  
 
 ## Features
-- Extremely low CPU and RAM usage (see [RAM usage](#ram-usage))
+- Extremely low CPU and RAM usage (values greatly depend on number of servers and channels)
 - Voice calls (WIP)
 - Vim-mode
 - Integrated RPC (only Rich Presence) and game detection
@@ -28,20 +28,22 @@ It is built with Python (this [doesnt mean its slow](#note-on-python-performance
 - View images, gifs, videos, audio, stickers and YouTube with ASCII art or in external app
 - Download/upload attachments
 - Select message and: reply, edit, delete, go to replied, react, vote in a poll...
-- Member list (toggleable)
+- Member list
 - Search messages
 - Client commands with history, custom commands can be bound to key
 - App commands and some interactions
 - View user profile
-- Channel tree (toggleable)
+- Channel tree
+    - Correct channel order
     - Don't show hidden channels
     - Show muted channels as gray
     - Show unread channels as bold
     - Show channels with mention as red with number of mentions
     - Collapse categories and servers
     - DMs in separate drop-down, show DM status
-    - Forums, imageborads and channel threads
+    - Forums, channel threads
     - Folders with custom naming
+    - View channel or server info
 - Show reactions, replied message, forwarded message
 - Show embeds, attachment types and links, code blocks
 - Spellchecking
@@ -515,15 +517,8 @@ Follow [fbterm setup instructions](https://wiki.archlinux.org/title/Fbterm#Insta
 Some characters may fail to render so set `emoji_as_text = True` in config and `compact = True` in theme. Some theme characters should also be tweaked.  
 Note: keybinding `Ctrl+Up/Down/Left/Right` does not work in tty, either rebind them or add custom keymap, or in `/etc/vconsole.conf`.  
 
-### RAM usage
-RAM usage greatly depends on multiple factors:
-- Full binary version uses few MB more than lite.
-- Number of servers and channels: each avg server is ~1MB.
-- If using terminal media player it will permanently increase RAM usage by ~20MB on firs media play.
-- Voice calls will also permanently increase RAM usage by ~5MB on first connected/initialized call (+ ~20MB for media if not already).
-
 ### Adding desktop launcher on Linux
-Simply make the launcher execute `endcord` or `endcord-lite`, endcord will deal with starting terminal. It will prefer `$TERMINAL` environment variable, then fallback to some most popular terminal emulators.
+Simply make launcher execute `endcord` or `endcord-lite`, endcord will deal with starting terminal. It will prefer `$TERMINAL` environment variable, then fallback to some most popular terminal emulators.
 
 ### Legacy theme
 Endcord default theme uses non-standard characters to display som TUI elements, and these characters may not work on some terminals, or look weird wih some fonts.  

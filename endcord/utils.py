@@ -64,10 +64,7 @@ def ensure_terminal():
         print("No terminal emulator found.", file=sys.stderr)
         sys.exit(1)
 
-    if "__compiled__" in globals() or getattr(sys, "frozen", False):   # built with nuitka or pyinstaller
-        cmd = [os.path.abspath(sys.argv[0])] + sys.argv[1:]
-    else:
-        cmd = [sys.executable] + sys.argv
+    cmd = [sys.executable] + sys.argv
     if terminal in ("gnome-terminal", "kgx"):
         subprocess.Popen([terminal, "--"] + cmd)
     else:

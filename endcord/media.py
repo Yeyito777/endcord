@@ -29,7 +29,6 @@ except (AssertionError, RuntimeError):
 
 from endcord import terminal_utils, xterm256
 
-BASE_SOUND_GAIN = 1.0
 ESC = "\x1b"
 RESET = f"{ESC}[0m"
 
@@ -43,19 +42,6 @@ def get_mime(path):
     if kind:
         return kind.mime
     return "unknown/unknown"
-
-
-def volume_to_gain(volume):
-    """Convert volume value 0-200 to gain, above 100 is boost up to x5"""
-    volume = max(min(volume, 200), 0)
-    if volume == 0:
-        return 0.0
-    volume = volume / 100
-    if volume <= 1.0:
-        db = -30.0 + 30.0 * volume
-    else:
-        db = 14 * (volume - 1.0) ** 1.5
-    return BASE_SOUND_GAIN * (10 ** (db / 20.0))
 
 
 def img_to_term(img, img_gray, bg_color, ascii_palette, ascii_palette_len, screen_width, screen_height, img_width, img_height):
@@ -210,11 +196,7 @@ def img_to_term_block_truecolor(img, bg_color, screen_width, screen_height, img_
 
 # use cython if available, ~1.7 times faster
 if importlib.util.find_spec("endcord_cython") and importlib.util.find_spec("endcord_cython.media"):
-    from endcord_cython.media import (
-        img_to_term,
-        img_to_term_block,
-        img_to_term_block_truecolor,
-    )
+    from endcord_cython.media import img_to_term, img_to_term_block
 
 # get speaker
 if have_soundcard:
@@ -229,7 +211,7 @@ else:
 class TerminalMedia():
     """Methods for showing and playing media in terminal"""
 
-    def __init__(self, config, keybindings, ui=True, external=False, volume=100):
+    def __init__(self, config, keybindings, ui=True, external=False):
         logging.getLogger("libav").setLevel(logging.ERROR)
         media_block = config["media_use_blocks"]
         self.truecolor = config["media_truecolor"]
@@ -261,7 +243,6 @@ class TerminalMedia():
         self.media_type = None
         self.seek = None
         self.screen_size = terminal_utils.get_size()
-        self.img = None
         self.ui = ui
         self.ui_line = None
         if ui:
@@ -270,20 +251,15 @@ class TerminalMedia():
             self.ui_timer = 30
         if media_block:
             self.pil_img_to_term = self.pil_img_to_term_block
-        if self.truecolor:   # select drawing algorithm
-            self.img_to_term_block = img_to_term_block_truecolor
-        else:
-            self.img_to_term_block = img_to_term_block
-        self.volume = volume
-        self.gain = volume_to_gain(volume)
-        self.audio_queue = Queue(maxsize=10)
-        self.video_queue = Queue(maxsize=10)
+        if self.truecolor:
+            global img_to_term_block
+            img_to_term_block = img_to_term_block_truecolor
 
 
     def sigint_handler(self, _signum, _frame):
         """Handling Ctrl-C event"""
         self.stop_playback()
-        time.sleep(0.2)
+        time.sleep(1)
         terminal_utils.leave_tui()
         sys.exit(0)   # failsafe
 
@@ -372,7 +348,7 @@ class TerminalMedia():
             img = img.quantize(palette=img_palette, dither=0)
 
         # draw
-        string = self.img_to_term_block(   # truecolor is selected at init
+        string = img_to_term_block(
             img,
             self.bg_color,
             screen_width,
@@ -480,19 +456,14 @@ class TerminalMedia():
                         if self.pause_after_seek:
                             self.pause_after_seek = False
                             self.pause = True
-                            self.ui_line = self.build_ui_string()
-                            self.show_ui()
                         continue
                     if not self.playing:
                         break
-                    while self.pause:
-                        time.sleep(0.1)
-                    if self.pause_after_seek:
-                        continue
-                    audio = frame.to_ndarray().astype("float32").T
-                    audio *= self.gain
-                    stream.play(audio)
+                    stream.play(frame.to_ndarray().astype("float32").T)
                     self.video_time += frame.samples * frame_duration
+                    if self.pause:
+                        while self.pause:
+                            time.sleep(0.1)
                 if loop:
                     if int(time.time()) - start > loop_max:
                         break
@@ -515,45 +486,34 @@ class TerminalMedia():
 
     def stop_playback(self):
         """Stop all playbacks immediately"""
-        self.clear_queues()
         self.pause = False
         self.run = False
         self.playing = False
-
-
-    def clear_queues(self):
-        """Clear audio and video queues"""
-        while not self.audio_queue.empty():
-            self.audio_queue.get()
-        while not self.video_queue.empty():
-            self.video_queue.get()
 
 
     def audio_player(self, audio_queue, samplerate, channels, audio_ready):
         """Play audio frames from the queue"""
         with speaker.player(samplerate=samplerate, channels=channels, blocksize=1152) as stream:
             audio_ready.set()
-            while self.run:
+            while True:
                 frame = audio_queue.get()
                 if frame is None:
                     break
-                audio = frame.to_ndarray().astype("float32").T
-                audio *= self.gain
-                stream.play(audio)
+                stream.play(frame.to_ndarray().astype("float32").T)
                 while self.pause:
                     time.sleep(0.1)
 
 
     def video_player(self, video_queue, audio_queue, frame_duration, no_audio=False):
         """Play video frames from the queue"""
-        while self.run:
+        while True:
             frame = video_queue.get()
             if frame is None:
                 break
             if audio_queue.qsize() >= 1 or no_audio:
                 start_time = time.time()
-                self.img = frame.to_image()
-                self.pil_img_to_term(self.img, remove_alpha=False)
+                img = frame.to_image()
+                self.pil_img_to_term(img, remove_alpha=False)
             if audio_queue.qsize() >= 3 or no_audio:
                 time.sleep(max(frame_duration - (time.time() - start_time), 0))
             while self.pause:
@@ -582,6 +542,7 @@ class TerminalMedia():
         frame_index = max(int(video_fps / self.cap_fps), 1)
 
         # prepare audio
+        audio_queue = Queue(maxsize=10)
         have_audio = False
         if not self.mute_video and have_sound:
             all_audio_streams = container.streams.audio
@@ -589,13 +550,14 @@ class TerminalMedia():
                 audio_ready = threading.Event()
                 have_audio = True
                 audio_stream = all_audio_streams[0]
-                audio_thread = threading.Thread(target=self.audio_player, args=(self.audio_queue, audio_stream.rate, audio_stream.channels, audio_ready), daemon=True)
+                audio_thread = threading.Thread(target=self.audio_player, args=(audio_queue, audio_stream.rate, audio_stream.channels, audio_ready), daemon=True)
                 audio_thread.start()
                 audio_ready.wait()   # wait for audio to decrease desyncing
                 audio_ready.clear()
 
         # prepare video
-        video_thread = threading.Thread(target=self.video_player, args=(self.video_queue, self.audio_queue, frame_duration, not(have_audio)), daemon=True)
+        video_queue = Queue(maxsize=10)
+        video_thread = threading.Thread(target=self.video_player, args=(video_queue, audio_queue, frame_duration, not(have_audio)), daemon=True)
         video_thread.start()
 
         num = 0
@@ -607,27 +569,24 @@ class TerminalMedia():
                 if self.pause_after_seek:
                     self.pause_after_seek = False
                     self.pause = True
-                    self.ui_line = self.build_ui_string()
-                    self.show_ui()
                 continue
             if not self.playing:
                 container.close()
                 break
-            while self.pause:
-                time.sleep(0.1)
-            if self.pause_after_seek:
-                continue
             if isinstance(frame, av.audio.frame.AudioFrame) and have_audio:
-                self.audio_queue.put(frame)
+                audio_queue.put(frame)
             if isinstance(frame, av.video.frame.VideoFrame):
                 if num == frame_index:   # limit fps
-                    self.video_queue.put(frame)
+                    video_queue.put(frame)
                     num = 0
                 num += 1
                 self.video_time += frame_duration
+            if self.pause:
+                while self.pause:
+                    time.sleep(0.1)
 
-        self.audio_queue.put(None)
-        self.video_queue.put(None)
+        audio_queue.put(None)
+        video_queue.put(None)
         if have_audio:
             audio_thread.join()
         video_thread.join()
@@ -736,29 +695,16 @@ class TerminalMedia():
                     self.player_thread.start()
         elif code == 103 and self.media_type in ("audio", "video") and not self.ended:   # seek forward
             self.show_ui()
-            self.clear_queues()
             if self.pause:
                 self.pause = False
                 self.pause_after_seek = True
             self.seek = min(self.video_time + 5, self.video_duration)
         elif code == 104 and self.media_type in ("audio", "video") and not self.ended:   # seek backward
             self.show_ui()
-            self.clear_queues()
             if self.pause:
                 self.pause = False
                 self.pause_after_seek = True
             self.seek = max(self.video_time - 5, 0)
-        elif code == 105 and self.media_type in ("audio", "video"):   # volume up
-            self.volume += 10
-            self.volume = min(self.volume, 200)
-            self.gain = volume_to_gain(self.volume)
-            self.show_ui()
-        elif code == 106 and self.media_type in ("audio", "video"):   # volume Down
-            self.volume -= 10
-            self.volume = max(self.volume, 0)
-            self.gain = volume_to_gain(self.volume)
-            self.show_ui()
-
 
 
     def start_ui_thread(self):
@@ -770,8 +716,6 @@ class TerminalMedia():
     def show_ui(self):
         """Show UI after its been hidden"""
         self.ui_timer = 0
-        if self.img:
-            self.pil_img_to_term(self.img, remove_alpha=False)
 
 
     def hide_ui(self):
@@ -807,15 +751,14 @@ class TerminalMedia():
         """Draw UI line at bottom of the screen"""
         total_time = f"{int(self.video_duration) // 60:02d}:{int(self.video_duration) % 60:02d}"
         current_time = f"{int(self.video_time) // 60:02d}:{int(self.video_time) % 60:02d}"
-        volume = f"VOL:{int(self.volume):03d}"
-        bar_len = terminal_utils.get_size()[1] - 28   # minus len of all other elements and spaces
+        bar_len = terminal_utils.get_size()[1] - 20   # minus len of all other elements and spaces
         filled = int(bar_len * min(self.video_time / self.video_duration, 1))
         bar = self.bar_ch * filled + " " * (bar_len - filled)
         if self.pause:
             pause = "|"
         else:
             pause = ">"
-        return f"   {pause} {current_time} {bar} {total_time} {volume}   "
+        return f"   {pause} {current_time} {bar} {total_time}   "
 
 
     def wait_input(self):
@@ -834,10 +777,6 @@ class TerminalMedia():
                 self.control_codes(103)
             elif key in self.keybindings["media_seek_backward"]:
                 self.control_codes(104)
-            elif key in self.keybindings["media_volume_up"]:
-                self.control_codes(105)
-            elif key in self.keybindings["media_volume_down"]:
-                self.control_codes(106)
 
 
 def runner(path, config, keybindings):

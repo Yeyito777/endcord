@@ -16,8 +16,6 @@ import pygame
 import pygame.freetype
 from pygame._sdl2 import Window as pg_Window
 
-from endcord import xterm256
-
 if sys.platform.startswith("android"):
     sys.platform = "linux"
 if "bsd" in sys.platform:
@@ -290,18 +288,16 @@ def xterm_to_rgb(x):
     """Convert xterm256 color to RGB tuple"""
     if x < 16:
         return SYSTEM_COLORS[x]
-    if 16 <= x < len(xterm256.colors):
-        return xterm256.colors[x]
+    if 16 <= x <= 231:
+        x -= 16
+        r = (x // 36) % 6
+        g = (x // 6) % 6
+        b = x % 6
+        return (r * 51, g * 51, b * 51)
+    if 232 <= x <= 255:
+        gray = 8 + (x - 232) * 10
+        return (gray, gray, gray)
     return (0, 0, 0)
-
-
-
-def resolve_rgb_color(value, default_rgb):
-    """Resolve xterm index or exact RGB color to RGB tuple."""
-    if isinstance(value, int):
-        return default_rgb if value <= 0 else xterm_to_rgb(value)
-    return xterm256.parse_rgb_color(value)
-
 
 
 def is_emoji(ch):
@@ -829,8 +825,8 @@ def doupdate():
 
 def init_pair(pair_id, fg, bg):
     """curses.init_pair clone using pygame"""
-    fg_rgb = resolve_rgb_color(fg, DEFAULT_PAIR[0])
-    bg_rgb = resolve_rgb_color(bg, DEFAULT_PAIR[1])
+    fg_rgb = DEFAULT_PAIR[0] if fg <= 0 else xterm_to_rgb(fg)
+    bg_rgb = DEFAULT_PAIR[1] if bg <= 0 else xterm_to_rgb(bg)
     if pair_id >= len(color_map):
         missing = pair_id + 1 - len(color_map)
         color_map.extend([DEFAULT_PAIR] * missing)
