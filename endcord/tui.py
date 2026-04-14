@@ -523,6 +523,7 @@ class TUI():
                     target = self.render_request
                     urgent = self.render_urgent
                     self.render_urgent = False
+                    self.hide_terminal_cursor_for_render()
                     curses.doupdate()
                     self.sync_terminal_cursor_state()
                     self.render_complete = target
@@ -1184,6 +1185,15 @@ class TUI():
             self.active_section == "main" and
             not self.disable_drawing
         )
+
+
+    def hide_terminal_cursor_for_render(self):
+        """Hide terminal cursor while curses is painting to avoid visible cursor travel."""
+        if not self.terminal_vim_cursor_supported or not self.hardware_cursor_visible:
+            return
+        sys.stdout.write("\033[?25l")
+        sys.stdout.flush()
+        self.hardware_cursor_visible = False
 
 
     def sync_terminal_cursor_state(self, visible=None):
