@@ -345,6 +345,8 @@ class Endcord:
         try:
             # in case curses.wrapper doesnt restore terminal
             curses.nocbreak()
+            if hasattr(curses, "nl"):
+                curses.nl()
             curses.echo()
             curses.endwin()
         except curses.error:

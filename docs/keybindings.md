@@ -136,7 +136,7 @@ Switch tab keybinding is special - `NUM` is placeholder for 1-9 number keys, eg.
 ### Configuring vim mode keybindings
 Keybindings for vim mode are configured in section `[vim_mode_bindings]` can be typed as characters but they must be in "". Eg.: `"edit" = "e"`.  
 Alternatively key codes can be used too. When specifying chained or multiple bindings, key codes must be used!   
-There is one special keybinding, used only in vim mode: `"insert_mode" = "i"`.  
+There are 3 special keybindings, used only in vim mode: `"insert_mode" = "i"`, `"append_mode" = "a"`, and `"focus_tree" = 11` (`Ctrl+K`). `Ctrl+J` focus-to-chat is handled specially in terminal mode because it shares a keycode with Enter.  
 Command bindings can also use vim mode bindings, but they must be typed as key codes in quotes!
 
 ### Command keybinding (macros)
@@ -150,9 +150,14 @@ Special commands available only for command-bindings are documented in [Commands
 
 ## Vim mode keybindings
 - `i` - Enter insert mode
+- `a` - Enter insert mode one character to the right (append)
+- `Ctrl+K` - Move focus to the previous visible pane (carousel)
+- `Ctrl+J` - Move focus to the next visible pane (carousel)
+- `Enter` - Select/open the focused conversation in the tree pane
 
 ### tree
 - `K/J` - Navigating channel tree
+- When the conversations/tree pane is focused, `k/j` also move through it
 - `Space` - Expand selected categories and servers or enter selected channel
 - `W` - Un/collapse channel with threads in tree
 - `O` - Join/leave selected thread in tree
@@ -161,13 +166,17 @@ Special commands available only for command-bindings are documented in [Commands
 
 ### input line
 - `h/l` - character left/right
-- `b/w` - word left/right
+- `b/w/e` - word left / next word / word end
+- `B/W/E` - WORD left / next WORD / WORD end
+- `dd` - delete current prompt line
+- `D` - delete to end of prompt line
+- `C` - change to end of prompt line
 - `Ctrl+h/l` - select left/right
 - `H/L` - select word left/right
 - `Ctrl+N` - Insert newline in input line (warning `Shift+Enter` doesn't work in terminals)
 - `u` - Undo
 - `Ctrl+R` - Redo
-- `a` - Select all
+- `Alt+A` - Select all
 - `y` - Copy selection
 - `Y` - Cut selection
 - `X` - Delete word
@@ -178,6 +187,9 @@ Special commands available only for command-bindings are documented in [Commands
 - `r` - Reply to selected message
 - `e` - Edit selected message
 - `d` - Delete selected message
+- `Ctrl+Y/E` - Scroll chat up/down by one line
+- `Ctrl+U/D` - Scroll chat up/down by half a page
+- `Ctrl+B/F` - Scroll chat up/down by a full page
 - `p` - Toggle reply ping when replying
 - `B` - Scroll back to chat bottom
 - `g` - Go to replied message from selected message
@@ -214,5 +226,4 @@ Special commands available only for command-bindings are documented in [Commands
 - `NUM`- Switch to tab, `NUM` is 1-9.
 - `E` - Open external editor to type message in it
 - `Ctrl+K` - Open command palette and type `goto ` and show recent channels
-- `Alt+Left/Right` - Switch tabs incrementally (next/previous)
-- `Q` - Quit
+- `Alt+Left/Right` - Switch tabs incrementally (ne

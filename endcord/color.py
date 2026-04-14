@@ -6,13 +6,11 @@
 import atexit
 import curses
 import importlib.util
-import re
 import sys
 
 from endcord import xterm256
 
 colors = xterm256.colors
-hex_color = re.compile(r"^#?[0-9a-fA-F]{6}$")
 reserved_color_slots = set()
 palette_restore = set()
 palette_restore_registered = False
@@ -23,27 +21,8 @@ def argmin(values):
     return min(range(len(values)), key=values.__getitem__)
 
 
-def is_rgb_color(value):
-    """Return True if value is exact RGB color specification."""
-    if isinstance(value, str):
-        return bool(hex_color.fullmatch(value.strip()))
-    return (
-        isinstance(value, (list, tuple)) and
-        len(value) == 3 and
-        all(isinstance(channel, int) and 0 <= channel <= 255 for channel in value)
-    )
-
-
-def parse_rgb_color(value):
-    """Parse rgb tuple/list or #RRGGBB string into RGB tuple."""
-    if isinstance(value, str):
-        color_value = value.strip().lstrip("#")
-        if not hex_color.fullmatch(value.strip()):
-            raise ValueError(f"Invalid RGB color: {value}")
-        return tuple(int(color_value[i:i+2], 16) for i in (0, 2, 4))
-    if is_rgb_color(value):
-        return tuple(value)
-    raise ValueError(f"Invalid RGB color: {value}")
+is_rgb_color = xterm256.is_rgb_color
+parse_rgb_color = xterm256.parse_rgb_color
 
 
 def rgb_to_curses(rgb):
