@@ -6,6 +6,7 @@
 import atexit
 import curses
 import importlib.util
+import json
 import logging
 import os
 import re
@@ -418,6 +419,13 @@ class TUI():
         self.render_complete = 0
         self.render_urgent = False
         self.defer_terminal_cursor = False
+        self.cursor_trace_path = os.environ.get("ENDCORD_CURSOR_TRACE", "")
+        if self.cursor_trace_path in ("1", "true", "TRUE"):
+            self.cursor_trace_path = f"/tmp/endcord-cursor-{os.getpid()}.jsonl"
+        self.cursor_trace_file = open(self.cursor_trace_path, "a", buffering=1, encoding="utf-8") if self.cursor_trace_path else None
+        self.cursor_trace_lock = threading.Lock()
+        if self.cursor_trace_file:
+            atexit.register(self.cursor_trace_file.close)
         self.screen_update_thread = threading.Thread(target=self.screen_update, daemon=True)
         self.screen_update_thread.start()
 
@@ -504,7 +512,47 @@ class TUI():
             if immediate:
                 self.render_urgent = True
             self.need_update.set()
-            return self.render_request
+            seq = self.render_request
+        self.trace_cursor_event("request_render", immediate=immediate, target=seq)
+        return seq
+
+
+    def trace_cursor_event(self, event, **extra):
+        """Write detailed vim cursor trace events when debugging is enabled."""
+        if not self.cursor_trace_file:
+            return
+        payload = {
+            "ts": round(time.monotonic(), 6),
+            "thread": threading.current_thread().name,
+            "event": event,
+            "render_request": getattr(self, "render_request", None),
+            "render_complete": getattr(self, "render_complete", None),
+            "render_urgent": getattr(self, "render_urgent", None),
+            "defer_terminal_cursor": getattr(self, "defer_terminal_cursor", None),
+            "active_section": getattr(self, "active_section", None),
+            "insert_mode": getattr(self, "insert_mode", None),
+            "hardware_cursor_visible": getattr(self, "hardware_cursor_visible", None),
+            "terminal_cursor_shape": getattr(self, "terminal_cursor_shape", None),
+            "input_index": getattr(self, "input_index", None),
+            "input_line_index": getattr(self, "input_line_index", None),
+            "cursor_pos": getattr(self, "cursor_pos", None),
+            "prompt": getattr(self, "prompt", None),
+        }
+        for name in ("win_prompt", "win_input_line"):
+            win = getattr(self, name, None)
+            if win is None:
+                payload[f"{name}_beg"] = None
+                payload[f"{name}_max"] = None
+                continue
+            try:
+                payload[f"{name}_beg"] = list(win.getbegyx())
+                payload[f"{name}_max"] = list(win.getmaxyx())
+            except curses.error:
+                payload[f"{name}_beg"] = None
+                payload[f"{name}_max"] = None
+        payload.update(extra)
+        with self.cursor_trace_lock:
+            self.cursor_trace_file.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
     def screen_update(self):
@@ -1206,12 +1254,16 @@ class TUI():
         should_show = use_terminal_cursor if visible is None else (use_terminal_cursor and visible)
         target_shape = None
         sequence = ""
+        term_row = None
+        term_col = None
         if should_show:
             target_shape = "bar" if self.insert_mode else "block"
             self.sync_input_cursor_position()
             cursor_x = min(max(self.cursor_pos, 0), self.input_hw[1] - 1)
             win_y, win_x = self.win_input_line.getbegyx()
-            sequence += f"\033[{win_y + 1};{win_x + cursor_x + 1}H"
+            term_row = win_y + 1
+            term_col = win_x + cursor_x + 1
+            sequence += f"\033[{term_row};{term_col}H"
             if target_shape != self.terminal_cursor_shape:
                 sequence += "\033[6 q" if target_shape == "bar" else "\033[2 q"
                 if self.terminal_cursor_color:
@@ -1220,6 +1272,15 @@ class TUI():
                 sequence += "\033[?25h"
         elif self.hardware_cursor_visible:
             sequence += "\033[?25l"
+        self.trace_cursor_event(
+            "sync_terminal_cursor_state",
+            visible_arg=visible,
+            use_terminal_cursor=use_terminal_cursor,
+            should_show=should_show,
+            target_shape=target_shape,
+            term_row=term_row,
+            term_col=term_col,
+        )
         if sequence:
             sys.stdout.write(sequence)
             sys.stdout.flush()
@@ -3114,6 +3175,7 @@ class TUI():
         if code in (26, 28):
             self.defer_terminal_cursor = True
             self.hide_terminal_cursor_for_render()
+        self.trace_cursor_event("return_input_code", code=code, clear_buffer=clear_buffer, returned_text=tmp)
         if clear_buffer:
             self.input_buffer = ""
         return tmp, self.chat_selected, self.tree_selected_abs, code
@@ -3124,6 +3186,7 @@ class TUI():
         Take input from user, and show it on screen.
         Return typed text, absolute_tree_position and whether channel is changed.
         """
+        self.trace_cursor_event("wait_input_begin", prompt=prompt, init_text=init_text, reset=reset, keep_cursor=keep_cursor, press=press)
         _, w = self.input_hw
         self.enable_autocomplete = autocomplete
         self.defer_terminal_cursor = False
