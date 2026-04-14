@@ -35,6 +35,28 @@ match_split = re.compile(r"[^\w']")
 match_spaces = re.compile(r" {3,}")
 
 
+def get_process_ancestor_names(limit=12):
+    """Return lowercase process names for current process ancestors when /proc is available."""
+    names = []
+    pid = os.getpid()
+    for _ in range(limit):
+        try:
+            with open(f"/proc/{pid}/status", encoding="utf-8") as status_file:
+                parent_pid = None
+                for line in status_file:
+                    if line.startswith("PPid:"):
+                        parent_pid = int(line.split()[1])
+                        break
+            if not parent_pid or parent_pid <= 1:
+                break
+            with open(f"/proc/{parent_pid}/comm", encoding="utf-8") as comm_file:
+                names.append(comm_file.read().strip().lower())
+            pid = parent_pid
+        except (FileNotFoundError, ProcessLookupError, PermissionError, ValueError):
+            break
+    return names
+
+
 def ctrl(x):
     """Convert character code to ctrl-modified"""
     return x - 96
@@ -267,6 +289,11 @@ class TUI():
         self.color_id_cursor = self.init_pair(config["color_cursor"])
         self.insert_cursor_color_id = self.init_pair(self.build_insert_cursor_color(config["color_cursor"], config["color_input_line"]))
         self.terminal_vim_cursor_supported = sys.stdout.isatty() and not uses_pgcurses
+        force_terminal_vim_cursor = os.environ.get("ENDCORD_FORCE_TERMINAL_VIM_CURSOR", "").lower() in ("1", "true", "yes", "on")
+        disable_terminal_vim_cursor = os.environ.get("ENDCORD_DISABLE_TERMINAL_VIM_CURSOR", "").lower() in ("1", "true", "yes", "on")
+        self.disable_terminal_vim_cursor = disable_terminal_vim_cursor or (not force_terminal_vim_cursor and "st" in get_process_ancestor_names())
+        if self.disable_terminal_vim_cursor:
+            logger.info("Disabling terminal vim cursor; falling back to software prompt cursor")
         self.terminal_cursor_color = self.get_terminal_cursor_color(config["color_cursor"])
         self.terminal_cursor_shape = None
         self.hardware_cursor_visible = False
@@ -1230,6 +1257,7 @@ class TUI():
         """Return True when prompt cursor should use terminal hardware cursor."""
         return (
             self.terminal_vim_cursor_supported and
+            not self.disable_terminal_vim_cursor and
             self.vim_mode and
             self.active_section == "main" and
             not self.disable_drawing and
