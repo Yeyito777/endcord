@@ -2721,6 +2721,8 @@ class TUI():
             if self.uses_terminal_vim_cursor():
                 self.request_render()
             else:
+                if self.bordered and self.vim_mode and not self.insert_mode and self.active_section == "main":
+                    self.redraw_borders()
                 self.set_cursor_color(self.get_cursor_on_color_id())
 
 
