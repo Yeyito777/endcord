@@ -242,6 +242,9 @@ keybindings = {
     "media_replay": 122,   # Z
     "media_seek_forward": 261,   # Right
     "media_seek_backward": 260,   # Left
+    "media_volume_up": 259,   # Up
+    "media_volume_down": 258,   # Down
+
     # other
     "command_palette": 31,   # Ctrl+/
     "cancel": 24,   # Ctrl+X

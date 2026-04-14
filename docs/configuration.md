@@ -318,10 +318,10 @@ Note: always put string in `""`. To use `"` inside the string escape it like thi
 
 ### Colors and attributes
 Colors are part of the theme, configured as 2 or 3 values in a list: `[foreground, background, attribute]`  
-Foreground and background are ANSI color codes. To print all available colors with codes run: `endcord --colors`.  
+Foreground and background can be ANSI color codes, exact RGB hex strings like `"#1d9bf0"`, or RGB tuples like `(29, 155, 240)`. To print all available ANSI colors with codes run: `endcord --colors`. When exact RGB is used in terminal mode, endcord will try to remap free palette slots for that session; if terminal does not support that, it falls back to nearest ANSI color.  
 -1 is terminal default color (bg or fg individually). Set entire color pair to `None` to use terminal default fg and bg colors.  
 Attribute is optional string: `"b"/"bold"`, `"u"/"underline"`, `"i"/"italic"`
-Example: `[209, 234, "u"]` - 209 is foreground, 234 is background, "u" is underline.  
+Example: `[209, 234, "u"]` - 209 is foreground, 234 is background, "u" is underline. Another example: `["#1d9bf0", -1, "b"]`.  
 All colors starting with `color_format` are formatted like this:  
 `[[fg, bg, attr], [fg, bg, attr, start, end], [...]...]`  
 First `[fg, bg, attr]` is base color for whole context. If `bg` is -1, `bg` from `color_chat_default` and `color_chat_mention` is used. Same for `fg`.  

@@ -3,13 +3,19 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, version 3.
 
+import atexit
 import curses
 import importlib.util
+import re
 import sys
 
 from endcord import xterm256
 
 colors = xterm256.colors
+hex_color = re.compile(r"^#?[0-9a-fA-F]{6}$")
+reserved_color_slots = set()
+palette_restore = set()
+palette_restore_registered = False
 
 
 def argmin(values):
@@ -17,20 +23,89 @@ def argmin(values):
     return min(range(len(values)), key=values.__getitem__)
 
 
-def closest_color(rgb):
+def is_rgb_color(value):
+    """Return True if value is exact RGB color specification."""
+    if isinstance(value, str):
+        return bool(hex_color.fullmatch(value.strip()))
+    return (
+        isinstance(value, (list, tuple)) and
+        len(value) == 3 and
+        all(isinstance(channel, int) and 0 <= channel <= 255 for channel in value)
+    )
+
+
+def parse_rgb_color(value):
+    """Parse rgb tuple/list or #RRGGBB string into RGB tuple."""
+    if isinstance(value, str):
+        color_value = value.strip().lstrip("#")
+        if not hex_color.fullmatch(value.strip()):
+            raise ValueError(f"Invalid RGB color: {value}")
+        return tuple(int(color_value[i:i+2], 16) for i in (0, 2, 4))
+    if is_rgb_color(value):
+        return tuple(value)
+    raise ValueError(f"Invalid RGB color: {value}")
+
+
+def rgb_to_curses(rgb):
+    """Convert 0-255 RGB tuple to curses 0-1000 range."""
+    return tuple(round(channel * 1000 / 255) for channel in rgb)
+
+
+def curses_to_rgb(rgb):
+    """Convert curses 0-1000 range tuple to regular 0-255 RGB."""
+    return tuple(round(channel * 255 / 1000) for channel in rgb)
+
+
+def set_reserved_color_slots(slots):
+    """Set xterm color slots reserved for exact theme colors."""
+    global reserved_color_slots
+    reserved_color_slots = set(slots)
+
+
+
+def restore_palette_overrides():
+    """Restore terminal palette overrides done through curses.init_color."""
+    if not palette_restore or not sys.stdout.isatty():
+        return
+    sys.stdout.write("\033]104\a")
+    sys.stdout.flush()
+    palette_restore.clear()
+
+
+
+def register_palette_override(slot, rgb):
+    """Override one terminal palette slot and remember it should be reset on exit."""
+    global palette_restore_registered
+    palette_restore.add(slot)
+    curses.init_color(slot, *rgb_to_curses(rgb))
+    if not palette_restore_registered:
+        atexit.register(restore_palette_overrides)
+        palette_restore_registered = True
+
+
+
+def closest_color(rgb, exclude=None):
     """
     Find closest 8bit xterm256 color to provided rgb color.
     Return ANSI code and rgb color.
     """
+    excluded = reserved_color_slots | set(exclude or ())
     r, g, b = rgb
-    distances = []
+    best_index = None
+    best_distance = None
     for i, (cr, cg, cb) in enumerate(colors):
+        if i in excluded:
+            continue
         dr = r - cr
         dg = g - cg
         db = b - cb
-        distances.append(dr*dr + dg*dg + db*db)   # doing it like this for better performance
-    index = argmin(distances)
-    return index, colors[index]
+        distance = dr*dr + dg*dg + db*db   # doing it like this for better performance
+        if best_distance is None or distance < best_distance:
+            best_distance = distance
+            best_index = i
+    if best_index is None:
+        raise ValueError("No xterm256 colors available")
+    return best_index, colors[best_index]
 
 
 def int_to_rgb(int_color):
@@ -42,7 +117,7 @@ def int_to_rgb(int_color):
     )
 
 
-def convert_role_colors(all_roles, guild_id=None, role_id=None, default=-1):
+def _convert_role_colors_python(all_roles, guild_id=None, role_id=None, default=-1):
     """
     For all roles, in all guilds, convert integer color format into rgb tuple color and closest 8bit ANSI color code.
     If ANSI code is 0, then use default color.
@@ -69,6 +144,8 @@ def convert_role_colors(all_roles, guild_id=None, role_id=None, default=-1):
     return all_roles
 
 
+convert_role_colors = _convert_role_colors_python
+
 # use cython if available, ~20 times faster
 if importlib.util.find_spec("endcord_cython") and importlib.util.find_spec("endcord_cython.color"):
     from endcord_cython.color import convert_role_colors as convert_role_colors_cython
@@ -78,6 +155,8 @@ if importlib.util.find_spec("endcord_cython") and importlib.util.find_spec("endc
         If ANSI code is 0, then use default color.
         Optionally update only one guild and/or one role.
         """
+        if reserved_color_slots or not isinstance(default, int):
+            return _convert_role_colors_python(all_roles, guild_id, role_id, default)
         return convert_role_colors_cython(all_roles, colors, guild_id, role_id, default)
 
 

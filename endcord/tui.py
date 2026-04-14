@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 
-from endcord import acs, peripherals, utils
+from endcord import acs, color as color_utils, defaults, peripherals, utils
 
 logger = logging.getLogger(__name__)
 uses_pgcurses = hasattr(curses, "PGCURSES")
@@ -214,6 +214,18 @@ class TUI():
         self.last_free_id = 1   # last free color pair id
         self.color_pairs = {}
         self.attrib_map = [0]   # has 0 so its index starts from 1 to be matched with color pairs
+        self.exact_color_slots = {}
+        self.used_exact_color_slots = set()
+        self.can_define_exact_colors = (
+            not uses_pgcurses and
+            hasattr(curses, "can_change_color") and
+            hasattr(curses, "init_color") and
+            curses.can_change_color()
+        )
+        self.forbidden_exact_color_slots = self.get_used_theme_color_slots(config)
+        self.forbidden_exact_color_slots.update(set(range(16)))
+        self.forbidden_exact_color_slots.update({46, 196, 208, 233, 255})
+        color_utils.set_reserved_color_slots(set())
         tree_bg = config["color_tree_default"][1]
         self.protected_colors = 21   # first N colors that must not be reused
         self.init_pair((255, -1))   # white on default
@@ -237,7 +249,7 @@ class TUI():
         self.init_pair((208, tree_bg))   # orange
         self.init_pair((196, tree_bg))   # red
         self.init_pair(config["color_extra_window"])   # 21
-        curses.init_pair(255, config["color_default"][0], config["color_default"][1])   # temporary
+        self.init_pair(config["color_default"], force_id=255)   # temporary
         self.default_color = 255
         self.role_color_start_id = self.last_free_id   # starting id for role colors
         self.keybindings = keybindings
@@ -770,6 +782,57 @@ class TUI():
     def get_last_free_color_id(self):
         """Return last free color id. Should be run at the end of all color initialization in endcord.tui."""
         return self.last_free_id
+
+
+    def get_used_theme_color_slots(self, config):
+        """Collect xterm color indexes already used explicitly by the current theme."""
+        used_slots = set()
+
+        def add_color_values(value):
+            if value is None:
+                return
+            if len(value) >= 1 and isinstance(value[0], int) and 0 <= value[0] <= curses.COLORS:
+                used_slots.add(value[0])
+            if len(value) >= 2 and isinstance(value[1], int) and 0 <= value[1] <= curses.COLORS:
+                used_slots.add(value[1])
+
+        for key in defaults.theme:
+            if key not in config:
+                continue
+            value = config[key]
+            if key.startswith("color_format"):
+                for row in value or []:
+                    add_color_values(row)
+            elif key.startswith("color_"):
+                add_color_values(value)
+            elif key == "media_color_bg" and isinstance(value, int) and 0 <= value <= curses.COLORS:
+                used_slots.add(value)
+
+        return used_slots
+
+
+    def resolve_exact_color(self, value):
+        """Resolve exact RGB color to curses slot or RGB tuple depending on backend."""
+        if not color_utils.is_rgb_color(value):
+            return value
+        rgb = color_utils.parse_rgb_color(value)
+        if uses_pgcurses:
+            return rgb
+        if rgb in self.exact_color_slots:
+            return self.exact_color_slots[rgb]
+        if not self.can_define_exact_colors:
+            return color_utils.closest_color(rgb)[0]
+
+        excluded = self.forbidden_exact_color_slots | self.used_exact_color_slots
+        try:
+            slot = color_utils.closest_color(rgb, exclude=excluded)[0]
+        except ValueError:
+            slot = color_utils.closest_color(rgb)[0]
+        color_utils.register_palette_override(slot, rgb)
+        self.exact_color_slots[rgb] = slot
+        self.used_exact_color_slots.add(slot)
+        color_utils.set_reserved_color_slots(self.used_exact_color_slots)
+        return slot
 
 
     def set_selected(self, selected, change_amount=0, scroll=True, draw=True):
@@ -1957,9 +2020,11 @@ class TUI():
             else:
                 attribute = 0
 
-        if fg > curses.COLORS:
+        fg = self.resolve_exact_color(fg)
+        bg = self.resolve_exact_color(bg)
+        if isinstance(fg, int) and fg > curses.COLORS:
             fg = -1
-        if bg > curses.COLORS:
+        if isinstance(bg, int) and bg > curses.COLORS:
             bg = -1
         if force_id >= curses.COLOR_PAIRS:
             return 0
@@ -1971,7 +2036,7 @@ class TUI():
             return force_id
 
         # 255_curses_bug - reusing same pairs to save ids
-        key = (fg & 0x1FF) | ((bg & 0x1FF) << 9) | (attribute << 18)
+        key = (repr(fg), repr(bg), attribute)
         if key in self.color_pairs and self.last_free_id > self.protected_colors:
             return self.color_pairs[key]
         self.color_pairs[key] = self.last_free_id

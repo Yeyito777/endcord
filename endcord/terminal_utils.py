@@ -116,9 +116,12 @@ def get_size():
 
 def draw(lines):
     """Draw lines on screen"""
-    sys.stdout.write("\x1b[H")   # cursor home
-    sys.stdout.write(lines)
-    sys.stdout.flush()
+    try:
+        sys.stdout.write("\x1b[H")   # cursor home
+        sys.stdout.write(lines)
+        sys.stdout.flush()
+    except BlockingIOError:
+        pass
 
 
 def read_key():
@@ -223,8 +226,8 @@ def esc_detector_win():
                     time.sleep(0.01)
             except BlockingIOError:
                 time.sleep(0.01)
-    finally:
-        return
+    except Exception:
+        pass
 
 
 def stop_esc_detector():
