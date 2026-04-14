@@ -416,6 +416,7 @@ class TUI():
         self.need_update = threading.Event()
         self.render_request = 0
         self.render_complete = 0
+        self.render_urgent = False
         self.screen_update_thread = threading.Thread(target=self.screen_update, daemon=True)
         self.screen_update_thread.start()
 
@@ -495,10 +496,12 @@ class TUI():
         return result
 
 
-    def request_render(self):
+    def request_render(self, immediate=False):
         """Schedule a render pass and return its sequence number."""
         with self.lock:
             self.render_request += 1
+            if immediate:
+                self.render_urgent = True
             self.need_update.set()
             return self.render_request
 
@@ -507,26 +510,34 @@ class TUI():
         """Thread that updates drawn content on physical screen"""
         while True:
             self.need_update.wait()
-            time.sleep(self.screen_update_delay)
+            with self.lock:
+                urgent = self.render_urgent
+                self.render_urgent = False
+            if not urgent:
+                time.sleep(self.screen_update_delay)
             while True:
                 with self.lock:
                     if self.render_complete >= self.render_request:
                         self.need_update.clear()
                         break
                     target = self.render_request
+                    urgent = self.render_urgent
+                    self.render_urgent = False
                     curses.doupdate()
                     self.sync_terminal_cursor_state()
                     self.render_complete = target
                     if self.render_complete >= self.render_request:
                         self.need_update.clear()
                         break
+                if not urgent:
+                    break
 
 
     def flush_updates_now(self, timeout=0.25):
         """Wait for the screen update thread to flush pending screen updates."""
         if self.disable_drawing:
             return False
-        target = self.request_render()
+        target = self.request_render(immediate=True)
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             with self.lock:
@@ -1185,16 +1196,16 @@ class TUI():
         sequence = ""
         if should_show:
             target_shape = "bar" if self.insert_mode else "block"
+            self.sync_input_cursor_position()
+            cursor_x = min(max(self.cursor_pos, 0), self.input_hw[1] - 1)
+            win_y, win_x = self.win_input_line.getbegyx()
+            sequence += f"\033[{win_y + 1};{win_x + cursor_x + 1}H"
             if target_shape != self.terminal_cursor_shape:
                 sequence += "\033[6 q" if target_shape == "bar" else "\033[2 q"
                 if self.terminal_cursor_color:
                     sequence += f"\033]12;{self.terminal_cursor_color}\033\\"
             if not self.hardware_cursor_visible:
                 sequence += "\033[?25h"
-            self.sync_input_cursor_position()
-            cursor_x = min(max(self.cursor_pos, 0), self.input_hw[1] - 1)
-            win_y, win_x = self.win_input_line.getbegyx()
-            sequence += f"\033[{win_y + 1};{win_x + cursor_x + 1}H"
         elif self.hardware_cursor_visible:
             sequence += "\033[?25l"
         if sequence:
