@@ -414,6 +414,8 @@ class TUI():
 
         # start drawing
         self.need_update = threading.Event()
+        self.render_request = 0
+        self.render_complete = 0
         self.screen_update_thread = threading.Thread(target=self.screen_update, daemon=True)
         self.screen_update_thread.start()
 
@@ -422,7 +424,7 @@ class TUI():
         if self.enable_blink_cursor:
             self.blink_cursor_thread = threading.Thread(target=self.blink_cursor, daemon=True)
             self.blink_cursor_thread.start()
-        self.need_update.set()
+        self.request_render()
 
 
     def init_chainable(self):
@@ -493,24 +495,45 @@ class TUI():
         return result
 
 
+    def request_render(self):
+        """Schedule a render pass and return its sequence number."""
+        with self.lock:
+            self.render_request += 1
+            self.need_update.set()
+            return self.render_request
+
+
     def screen_update(self):
         """Thread that updates drawn content on physical screen"""
         while True:
             self.need_update.wait()
-            # here must be delay, otherwise output gets messed up
-            with self.lock:
-                time.sleep(self.screen_update_delay)
-                curses.doupdate()
-                self.sync_terminal_cursor_state()
-                self.need_update.clear()
+            time.sleep(self.screen_update_delay)
+            while True:
+                with self.lock:
+                    if self.render_complete >= self.render_request:
+                        self.need_update.clear()
+                        break
+                    target = self.render_request
+                    curses.doupdate()
+                    self.sync_terminal_cursor_state()
+                    self.render_complete = target
+                    if self.render_complete >= self.render_request:
+                        self.need_update.clear()
+                        break
 
 
     def flush_updates_now(self, timeout=0.25):
         """Wait for the screen update thread to flush pending screen updates."""
-        self.need_update.set()
+        if self.disable_drawing:
+            return False
+        target = self.request_render()
         deadline = time.monotonic() + timeout
-        while self.need_update.is_set() and time.monotonic() < deadline:
+        while time.monotonic() < deadline:
+            with self.lock:
+                if self.render_complete >= target:
+                    return True
             time.sleep(0.005)
+        return False
 
 
     def resize(self, redraw_only=False):
@@ -562,7 +585,7 @@ class TUI():
                 # fill gap between titles
                 self.screen.addch(0, self.tree_hw[1], self.vline, curses.color_pair(separator_color))
             self.screen.noutrefresh()
-            self.need_update.set()
+            self.request_render()
         self.draw_status_line()
         self.update_prompt(self.prompt)
         self.spellcheck()
@@ -651,7 +674,7 @@ class TUI():
         self.draw_member_list(self.member_list, self.member_list_format, force=True, clean=not(redraw_only))
         self.draw_chat()
         self.screen.noutrefresh()
-        self.need_update.set()
+        self.request_render()
 
 
     def force_redraw(self):
@@ -660,7 +683,7 @@ class TUI():
         self.screen.redrawwin()
         if sys.platform == "win32":
             self.screen.noutrefresh()   # ??? needed only with windows-curses
-            self.need_update.set()
+            self.request_render()
         self.resize()
 
 
@@ -697,7 +720,7 @@ class TUI():
                 for y in range(h):
                     self.win_member_list.insstr(y, 0, " " * w, curses.color_pair(1))
                 self.win_member_list.noutrefresh()
-                self.need_update.set()
+                self.request_render()
         self.hibernate_cursor = 10
         time.sleep(0.2)   # be sure everything is stopped before pausing
         with self.lock:
@@ -849,7 +872,7 @@ class TUI():
         if redraw and self.bordered and not self.disable_drawing:
             self.redraw_borders()
         elif not self.disable_drawing and self.terminal_vim_cursor_supported and self.vim_mode:
-            self.need_update.set()
+            self.request_render()
 
 
     def focus_main_section(self):
@@ -942,7 +965,7 @@ class TUI():
             self.draw_border(self.tree_border_hwyx, top=not(self.have_title_tree) or self.tree_width < 10, section="tree")
         with self.lock:
             self.screen.noutrefresh()
-            self.need_update.set()
+            self.request_render()
         if self.have_title:
             self.draw_title_line()
             self.draw_status_line()
@@ -956,7 +979,7 @@ class TUI():
             self.draw_border(extra_window_hwyx, top=False, bot=False, section="extra")
             self.draw_extra_window_border_caps(extra_window_hwyx)
             self.screen.noutrefresh()
-            self.need_update.set()
+            self.request_render()
 
 
     def get_used_theme_color_slots(self, config):
@@ -1568,7 +1591,7 @@ class TUI():
                             except curses.error:
                                 pass
                     self.screen.noutrefresh()
-                    self.need_update.set()
+                    self.request_render()
                 time.sleep(0.3)
 
 
@@ -1869,7 +1892,7 @@ class TUI():
             else:
                 self.win_status_line.insstr(0, 0, status_line + "\n", curses.color_pair(status_color_id) | self.attrib_map[status_color_id])
             self.win_status_line.noutrefresh()
-            self.need_update.set()
+            self.request_render()
 
 
     def draw_title_line(self):
@@ -1933,7 +1956,7 @@ class TUI():
             else:
                 self.win_title_line.insstr(0, 0, title_line + "\n", curses.color_pair(title_color_id) | self.attrib_map[title_color_id])
             self.win_title_line.noutrefresh()
-            self.need_update.set()
+            self.request_render()
 
 
     def draw_formatted_line(self, window, text, text_format, default_color):
@@ -1980,7 +2003,7 @@ class TUI():
                 title_line = title_txt + " " * (w - len(title_txt))
                 self.win_title_tree.insstr(0, 0, title_line + "\n", curses.color_pair(self.color_id_title_line) | self.attrib_map[self.color_id_title_line])
             self.win_title_tree.noutrefresh()
-            self.need_update.set()
+            self.request_render()
 
 
     def draw_input_line(self):
@@ -2028,7 +2051,7 @@ class TUI():
             if not use_terminal_cursor and not cursor_drawn and self.cursor_pos >= len(line_text):
                 self.show_cursor()
             self.win_input_line.noutrefresh()
-            self.need_update.set()
+            self.request_render()
 
 
     def draw_chat(self, norefresh=False):
@@ -2049,7 +2072,7 @@ class TUI():
                 )
                 self.win_chat.noutrefresh()
                 if not norefresh:
-                    self.need_update.set()
+                    self.request_render()
             except curses.error:
                 # exception will happen when window is resized to smaller w dimensions
                 self.resize()
@@ -2077,7 +2100,7 @@ class TUI():
                     break
                 self.win_chat.insstr(h - chat_y, 0, " " * w, curses.color_pair(1))
             self.win_chat.noutrefresh()
-            self.need_update.set()
+            self.request_render()
         if wait:
             time.sleep(self.screen_update_delay/2)
 
@@ -2193,7 +2216,7 @@ class TUI():
                 if above_mention:
                     self.win_tree.insstr(0, 0, " Mentions up ".center(w, self.hline), curses.color_pair(self.color_id_tree_mentioned) | self.attrib_map[self.color_id_tree_mentioned])
                 self.win_tree.noutrefresh()
-                self.need_update.set()
+                self.request_render()
             except curses.error:
                 # this exception will happen when window is resized to smaller h dimensions
                 self.resize()
@@ -2220,7 +2243,7 @@ class TUI():
                 self.win_tree.insch(y, 0, text[y], color)
                 y += 1
                 self.win_tree.noutrefresh()
-                self.need_update.set()
+                self.request_render()
         except curses.error:
             self.resize()
 
@@ -2241,7 +2264,7 @@ class TUI():
             self.win_prompt = self.screen.derwin(*prompt_hwyx)
             self.win_prompt.insstr(0, 0, self.prompt, curses.color_pair(self.color_id_prompt) | self.attrib_map[self.color_id_prompt])
             self.win_prompt.noutrefresh()
-            self.need_update.set()
+            self.request_render()
 
 
     def draw_extra_line(self, text=None, toggle=False):
@@ -2284,7 +2307,7 @@ class TUI():
                 else:
                     self.win_extra_line.insstr(0, 0, text + " " * (w - len(text)) + "\n", curses.color_pair(self.color_id_extra_line) | self.attrib_map[self.color_id_extra_line])
                 self.win_extra_line.noutrefresh()
-                self.need_update.set()
+                self.request_render()
             self.draw_chat()
 
 
@@ -2378,7 +2401,7 @@ class TUI():
                     y += 1
                 self.draw_chat(norefresh=True)
                 self.win_extra_window.noutrefresh()
-                self.need_update.set()
+                self.request_render()
 
 
     def remove_extra_window(self):
@@ -2485,7 +2508,7 @@ class TUI():
                     self.win_member_list.insstr(y, 0, "\n", curses.color_pair(1))
                     y += 1
                 self.win_member_list.noutrefresh()
-                self.need_update.set()
+                self.request_render()
 
         if uses_pgcurses:   # quick fix but not ideal, find why is tree cleared on derwin
             self.draw_tree()
@@ -2505,7 +2528,7 @@ class TUI():
                 for y in range(h):
                     self.win_member_list.insstr(y, 0, " " * w, curses.color_pair(1))
                 self.win_member_list.noutrefresh()
-                self.need_update.set()
+                self.request_render()
             if pause:
                 time.sleep(self.screen_update_delay/2)
 
@@ -2536,12 +2559,12 @@ class TUI():
         """Changes cursor color"""
         with self.lock:
             if self.uses_terminal_vim_cursor():
-                self.need_update.set()
+                self.request_render()
                 return
             _, _, line_text = self.get_visible_input_line()
             if self.draw_cursor_cell(color_id, line_text):
                 self.win_input_line.noutrefresh()
-                self.need_update.set()
+                self.request_render()
 
 
     def blink_cursor(self):
@@ -2573,7 +2596,7 @@ class TUI():
             self.cursor_on = True
             self.hibernate_cursor = 0
             if self.uses_terminal_vim_cursor():
-                self.need_update.set()
+                self.request_render()
             else:
                 self.set_cursor_color(self.get_cursor_on_color_id())
 
