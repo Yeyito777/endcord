@@ -417,6 +417,7 @@ class TUI():
         self.render_request = 0
         self.render_complete = 0
         self.render_urgent = False
+        self.defer_terminal_cursor = False
         self.screen_update_thread = threading.Thread(target=self.screen_update, daemon=True)
         self.screen_update_thread.start()
 
@@ -1183,7 +1184,8 @@ class TUI():
             self.terminal_vim_cursor_supported and
             self.vim_mode and
             self.active_section == "main" and
-            not self.disable_drawing
+            not self.disable_drawing and
+            not self.defer_terminal_cursor
         )
 
 
@@ -2274,18 +2276,29 @@ class TUI():
         with self.lock:
             h, w = self.screen.getmaxyx()
             del (self.win_prompt, self.win_input_line)
-            input_line_hwyx = (
-                1,
-                w - (self.tree_width + self.bordered + 1) - len(self.prompt) - 2*self.bordered,
-                h - 1 - self.bordered,
-                self.tree_width + len(self.prompt) + 2*self.bordered + 1)
+            if self.bordered:
+                prompt_hwyx = (1, len(self.prompt), h - 2, self.tree_width + 2)
+                input_line_hwyx = (
+                    1,
+                    w - (self.tree_width + 2) - len(self.prompt) - 2,
+                    h - 2,
+                    self.tree_width + len(self.prompt) + 2,
+                )
+            else:
+                prompt_hwyx = (1, len(self.prompt), h - 1, self.tree_width + 1)
+                input_line_hwyx = (
+                    1,
+                    w - (self.tree_width + 1) - len(self.prompt),
+                    h - 1,
+                    self.tree_width + len(self.prompt) + 1,
+                )
             self.win_input_line = self.screen.derwin(*input_line_hwyx)
             self.input_hw = self.win_input_line.getmaxyx()
-            prompt_hwyx = (1, len(self.prompt), h - 1 - self.bordered, self.tree_width + 2*self.bordered + 1)
             self.win_prompt = self.screen.derwin(*prompt_hwyx)
+            self.prompt_hw = self.win_prompt.getmaxyx()
             self.win_prompt.insstr(0, 0, self.prompt, curses.color_pair(self.color_id_prompt) | self.attrib_map[self.color_id_prompt])
             self.win_prompt.noutrefresh()
-            self.request_render()
+            self.request_render(immediate=True)
 
 
     def draw_extra_line(self, text=None, toggle=False):
@@ -3098,6 +3111,9 @@ class TUI():
         """Clean input line and return input code wit other data"""
         tmp = self.input_buffer
         self.pending_prompt_action = None
+        if code in (26, 28):
+            self.defer_terminal_cursor = True
+            self.hide_terminal_cursor_for_render()
         if clear_buffer:
             self.input_buffer = ""
         return tmp, self.chat_selected, self.tree_selected_abs, code
@@ -3110,6 +3126,7 @@ class TUI():
         """
         _, w = self.input_hw
         self.enable_autocomplete = autocomplete
+        self.defer_terminal_cursor = False
         if reset:
             self.input_buffer = ""
             self.input_index = 0
