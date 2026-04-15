@@ -1023,10 +1023,20 @@ class TUI():
             self.draw_chat()
 
 
+    def get_input_index_limit(self, insert_mode=None):
+        """Return the maximum valid prompt cursor index for the active vim mode."""
+        if insert_mode is None:
+            insert_mode = self.insert_mode
+        buffer_len = len(self.input_buffer)
+        if self.vim_mode and not insert_mode and buffer_len > 0:
+            return buffer_len - 1
+        return buffer_len
+
+
     def set_input_index(self, index):
         """Set cursor position on input line"""
         self.set_active_section("main")
-        self.input_index = index
+        self.input_index = min(max(0, index), self.get_input_index_limit())
         _, w = self.input_hw
         self.cursor_pos = self.input_index - max(0, len(self.input_buffer) - w + 1 - self.input_line_index)
         self.cursor_pos = max(self.cursor_pos, 0)
@@ -1184,7 +1194,7 @@ class TUI():
 
     def move_input_cursor_right(self):
         """Move input cursor one character to the right, scrolling if needed."""
-        if self.input_index >= len(self.input_buffer):
+        if self.input_index >= self.get_input_index_limit():
             return False
         width = self.input_hw[1]
         if self.input_index - max(0, len(self.input_buffer) - width - self.input_line_index) == width:
@@ -1309,7 +1319,7 @@ class TUI():
         """Adjust horizontal prompt scroll so the current input index stays visible."""
         width = self.input_hw[1]
         max_line_index = max(0, len(self.input_buffer) - width)
-        self.input_index = min(max(0, self.input_index), len(self.input_buffer))
+        self.input_index = min(max(0, self.input_index), self.get_input_index_limit())
         left_diff = self.input_index - max(0, len(self.input_buffer) - width + 1 - self.input_line_index)
         if left_diff <= 0:
             self.input_line_index -= left_diff - 4
@@ -1431,10 +1441,14 @@ class TUI():
     def set_vim_insert(self, value, append=False):
         """Set insert mode for vim mode."""
         if self.vim_mode:
-            if value and append:
-                self.move_input_cursor_right()
+            was_insert_mode = self.insert_mode
             self.pending_prompt_action = None
             self.insert_mode = value
+            if value and append:
+                self.input_index = min(self.input_index + 1, len(self.input_buffer))
+            elif was_insert_mode and not value and self.input_buffer and self.input_index > 0:
+                self.input_index -= 1
+            self.keep_input_index_on_screen()
             self.set_active_section("main")
             self.cursor_on = True
             self.hibernate_cursor = 0
@@ -3008,9 +3022,10 @@ class TUI():
             if not keep_cursor:
                 w += len(self.prompt) - len(prompt)
                 self.input_index = len(self.input_buffer)
-                self.cursor_pos = self.input_index - max(0, len(self.input_buffer) - w + 1 - self.input_line_index)
-                self.cursor_pos = max(self.cursor_pos, 0)
-                self.cursor_pos = min(w - 1, self.cursor_pos)
+        self.input_index = min(max(0, self.input_index), self.get_input_index_limit())
+        self.cursor_pos = self.input_index - max(0, len(self.input_buffer) - w + 1 - self.input_line_index)
+        self.cursor_pos = max(self.cursor_pos, 0)
+        self.cursor_pos = min(w - 1, self.cursor_pos)
         if not self.disable_drawing:
             self.update_prompt(prompt)
             self.spellcheck()
@@ -3556,6 +3571,7 @@ class TUI():
                 _, w = self.input_hw
 
             # keep index inside screen
+            self.input_index = min(max(0, self.input_index), self.get_input_index_limit())
             self.cursor_pos = self.input_index - max(0, len(self.input_buffer) - w + 1 - self.input_line_index)
             self.cursor_pos = max(self.cursor_pos, 0)
             self.cursor_pos = min(w - 1, self.cursor_pos)
