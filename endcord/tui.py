@@ -1438,6 +1438,7 @@ class TUI():
             self.set_active_section("main")
             self.cursor_on = True
             self.hibernate_cursor = 0
+            self.sync_terminal_cursor()
             if not self.disable_drawing:
                 self.draw_input_line()
             else:
