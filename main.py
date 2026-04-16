@@ -72,13 +72,9 @@ def main(args):
         section="keybindings",
         gen_config=gen_config,
     )
-    command_bindings = config.load_config(
-        config_path,
-        defaults.command_bindings,
-        section="command_bindings",
-        gen_config=gen_config,
-        merge=True,
-    )
+    # Legacy client commands / command-bindings are deprecated and disabled.
+    command_bindings = {}
+    keybindings["command_palette"] = None
     if config_data["vim_mode"]:
         vim_keybindings = config.load_config(
             config_path,
@@ -87,7 +83,9 @@ def main(args):
             gen_config=gen_config,
             merge=True,
         )
+        vim_keybindings["command_palette"] = None
         keybindings = config.merge_keybindings(keybindings, vim_keybindings, command_bindings)
+    keybindings["command_palette"] = None
     if not uses_pgcurses:
         keybindings = config.convert_keybindings(keybindings)
         command_bindings = config.convert_keybindings_cmd(command_bindings)

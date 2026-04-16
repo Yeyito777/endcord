@@ -20,7 +20,7 @@ INPUT_LINE_JUMP = 20   # jump size when moving input line
 MAX_DELTA_STORE = 50   # limit undo size
 MIN_ASSIST_LETTERS = 2
 ASSIST_TRIGGERS = ("#", "@", ":", ";")
-APP_COMMAND_ASSIST_TRIEGGER = "/"
+DEPRECATED_ASSIST_TYPES = (2,)
 if sys.platform == "win32" or os.environ.get("REALTERM", "") == "xterm":   # envvar set in main.py
     BACKSPACE = 8   # i cant believe this
     # ctrl+backspace is 263 (curses.KEY_BACKSPACE)
@@ -883,11 +883,11 @@ class TUI():
         Return word to be assisted with completing and type of assist needed
         Assist types:
         1 - channel
-        2 - username/role
+        2 - username/role (deprecated)
         3 - emoji
         4 - sticker
         5 - client command
-        6 - app command
+        6 - app command (deprecated)
         7 - upload file select
         100 - stop assist
         """
@@ -899,6 +899,9 @@ class TUI():
                     self.input_buffer[self.assist_start-1] in ASSIST_TRIGGERS
                 ):
                     assist_type = ASSIST_TRIGGERS.index(self.input_buffer[self.assist_start-1]) + 1
+                    if assist_type in DEPRECATED_ASSIST_TYPES:
+                        self.assist_start = -1
+                        return None, None
                     if self.assist_start != 1 and (self.input_buffer[self.assist_start-2] not in (" ", "\n") or self.input_buffer[self.assist_start] in (" ", "\n")):
                         # skip trigger if no space before it
                         return None, None
@@ -910,8 +913,6 @@ class TUI():
                 return None, 100
         if self.enable_autocomplete and self.input_buffer:
             return self.input_buffer, 7
-        if self.input_buffer and self.input_buffer[0] == APP_COMMAND_ASSIST_TRIEGGER:
-            return self.input_buffer, 6
         if self.instant_assist:
             return self.input_buffer, 5
         return None, None
@@ -3712,9 +3713,6 @@ class TUI():
             elif key in self.keybindings["add_reaction"] and not forum:
                 return self.return_input_code(36)
 
-            elif key in self.keybindings["command_palette"]:
-                return self.return_input_code(38)
-
             elif key in self.keybindings["toggle_tree"]:
                 return self.return_input_code(32)
 
@@ -3742,9 +3740,6 @@ class TUI():
                 return self.return_input_code(28)
 
             # terminal reserved keys: CTRL+ C, I, J, M, Q, S, Z
-
-            elif key in self.command_bindings:
-                return self.return_input_code((50, self.command_bindings.get(key)))
 
             elif key == curses.KEY_RESIZE:
                 self.resize()

@@ -58,7 +58,6 @@
 - `Alt+V` - Preview selected file in upload assist or when searching gif
 
 ### other
-- `Ctrl+/` * - Open command palette
 - `Ctrl+X` - Cancel all downloads and uploads
 - `Alt+D` - Cycle user status (online/away/DnD/invisible)
 - `Alt+M` - Toggle member list
@@ -66,11 +65,10 @@
 - `Alt+NUM`- Switch to tab, `NUM` is 1-9 in number row, not numeric keypad!
 - `Ctrl+1-9` - Focus the server list and hover the Nth visible server entry
 - `Alt+E` - Open external editor to type message in it
-- `Ctrl+K` - Open command palette and type `goto ` and show recent channels
 - `Alt+Left/Right` - Switch tabs incrementally (next/previous)
 - `Ctrl+C` - Quit
 - `Enter` - Open selected post in forum
-- `Escape` - Close assist, exit command mode, cancel...
+- `Escape` - Close assist, cancel, back out of temporary UI
 
 ### media player controls
 - `escape` - quit
@@ -83,7 +81,6 @@
 Some keybindings are used by terminals or OS itself, so they are by default rebound to something else.
 
 ### Windows:
-- `Ctrl+\` - Open command palette
 - `Ctrl+A` - Expand selected categories and servers
 - `Alt+Y` - View attached media (image, gif, video, audio)
 
@@ -137,16 +134,11 @@ Switch tab keybinding is special - `NUM` is placeholder for 1-9 number keys, eg.
 ### Configuring vim mode keybindings
 Keybindings for vim mode are configured in section `[vim_mode_bindings]` can be typed as characters but they must be in "". Eg.: `"edit" = "e"`.  
 Alternatively key codes can be used too. When specifying chained or multiple bindings, key codes must be used!   
-There are 4 special keybindings, used only in vim mode: `"insert_mode" = "i"`, `"append_mode" = "a"`, `"focus_tree" = 11` (`Ctrl+K`), and `"focus_history" = 14` (`Ctrl+N`). `Ctrl+J` focus-to-chat is handled specially in terminal mode because it shares a keycode with Enter.  
-Command bindings can also use vim mode bindings, but they must be typed as key codes in quotes!
+There are 4 special keybindings, used only in vim mode: `"insert_mode" = "i"`, `"append_mode" = "a"`, `"focus_tree" = 11` (`Ctrl+K`), and `"focus_history" = 14` (`Ctrl+N`). `Ctrl+J` focus-to-chat is handled specially in terminal mode because it shares a keycode with Enter.
 
-### Command keybinding (macros)
-There is additional section `[command_bindings]`, used to make custom client command string or even macros executed when keybinding is pressed.  
-Command keybinding is added like this: `"25" = "send_message Hello World!"`. This will execute that command when `Ctrl+X` is pressed.  
-Note that all bindings must be inside quotes, even a single integer. To use same binding as standard keybindings, set standard keybinding to `None`.  
-Alongside commands, standard keybinding names can be used here too. Eg. `"25" = "tree_up; tree_up"` will "press" tree_up binding twice.  
-To execute multiple commands in a sequence, type them separated with `;` character. To use actual `;` character in command type it as `\;`.  
-Special commands available only for command-bindings are documented in [Commands list](commands.md#command-bindings-only-commands).
+### Deprecated command keybindings
+The legacy `[command_bindings]` macro system is deprecated and ignored by the live client.  
+The archived implementation and old docs now live in `endcord/deprecated/command_mode.py` and `deprecated/commands.md`.
 
 
 ## Vim mode keybindings
@@ -221,12 +213,10 @@ Special commands available only for command-bindings are documented in [Commands
 - `V` - Preview selected file in upload assist or when searching gif
 
 ### other
-- `:` - Open command palette
 - `X` - Cancel all downloads and uploads
 - `s` - Cycle user status (online/away/DnD/invisible)
 - `m` - Toggle member list
 - `t` - Toggle channel tabbed (pinned) state
 - `NUM`- Switch to tab, `NUM` is 1-9.
 - `E` - Open external editor to type message in it
-- `Ctrl+K` - Open command palette and type `goto ` and show recent channels
-- `Alt+Left/Right` - Switch tabs incrementally (ne
+- `Alt+Left/Right` - Switch tabs incrementally (next/previous)

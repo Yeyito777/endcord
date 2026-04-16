@@ -9,6 +9,11 @@ import re
 
 import emoji
 
+from endcord.deprecated.input_assist import (
+    search_app_commands as deprecated_search_app_commands,
+    search_usernames_roles as deprecated_search_usernames_roles,
+)
+
 COMMAND_OPT_TYPE = ("subcommand", "group", "string", "integer", "True/False", "user ID", "channel ID", "role ID", "mentionable ID", "number", "attachment")
 
 
@@ -201,50 +206,8 @@ def search_channels_all(guilds, dms, query, full_input, recent=None, read_state=
 
 
 def search_usernames_roles(roles, query_results, guild_id, gateway, query, presences=[], limit=50, score_cutoff=15):
-    """Search for usernames and roles"""
-    results = []
-    worst_score = score_cutoff
-
-    # roles first
-    for role in roles:
-        formatted = f"{role["name"]} - role"
-        score = fuzzy_match_score(query, formatted)
-        if score < worst_score:
-            continue
-        heapq.heappush(results, (formatted, f"&{role["id"]}", score))
-        if len(results) > limit:
-            heapq.heappop(results)
-            worst_score = results[0][2]
-
-    if query_results:
-        for member in query_results:
-            formatted = f"{member["username"]} {member["name"]}"
-            score = fuzzy_match_score(query, formatted)
-            if score < worst_score:
-                continue
-            if member["name"]:
-                member_name = f" ({member["name"]})"
-            else:
-                member_name = ""
-            formatted = f"{member["username"]}{member_name}"
-            for presence in presences:
-                if presence["id"] == member["id"]:
-                    status = presence["status"].capitalize().replace("Dnd", "DnD")
-                    formatted += f" - {status}"
-                    break
-            heapq.heappush(results, (formatted, member["id"], score))
-            if len(results) > limit:
-                heapq.heappop(results)
-                worst_score = results[0][2]
-    else:
-        gateway.request_members(
-            guild_id,
-            None,
-            query=query,
-            limit=10,
-        )
-
-    return sorted(results, key=lambda x: x[2], reverse=True)
+    """Compatibility wrapper for the deprecated mention helper search."""
+    return deprecated_search_usernames_roles(roles, query_results, guild_id, gateway, query, presences, limit, score_cutoff)
 
 
 def search_emojis(all_emojis, premium, guild_id, query, safe_emoji=False, limit=50, score_cutoff=15):
@@ -501,297 +464,18 @@ def search_tabs(tabs, query, limit=50, score_cutoff=15):
 
 
 def search_app_commands(guild_apps, guild_commands, my_apps, my_commands, depth, guild_commands_permitted, dm, assist_skip_app_command, match_command_arguments, query, limit=50, score_cutoff=15):
-    """Search for app commands"""
-    results = []
-    worst_score = score_cutoff
-    query_words = query.split(" ")
-    autocomplete = False
-    if depth == 1 and assist_skip_app_command:
-        depth = 2   # skip app assist on depth 1
-
-    if depth == 1:   # app
-        assist_app = query_words[0].replace("_", " ")
-        # list apps
-        for app in guild_apps:
-            score = fuzzy_match_score(assist_app, app["name"])
-            if score < worst_score and assist_app:   # show all if no text is typed
-                continue
-            clean_name = app["name"].lower().replace(" ", "_")
-            heapq.heappush(results, (f"{clean_name} - guild app", f"/{clean_name}", score))
-            if len(results) > limit:
-                heapq.heappop(results)
-                worst_score = results[0][2]
-        for app in my_apps:
-            score = fuzzy_match_score(assist_app, app["name"])
-            if score < worst_score and assist_app:
-                continue
-            clean_name = app["name"].lower().replace(" ", "_")
-            heapq.heappush(results, (f"{clean_name} - user app", f"/{clean_name}", score))
-            if len(results) > limit:
-                heapq.heappop(results)
-                worst_score = results[0][2]
-
-    elif depth == 2:   # command
-        if assist_skip_app_command:
-            assist_app_name = None
-            assist_command = query_words[0].replace("_", " ")
-        else:
-            assist_app_name = query_words[0].lower()
-            assist_command = query_words[1].replace("_", " ")
-        # list commands
-        found = False
-        for num, command in enumerate(guild_commands):
-            if (command["app_name"].lower().replace(" ", "_") == assist_app_name or assist_skip_app_command) and guild_commands_permitted[num]:
-                command_name = command["name"].lower()
-                score = fuzzy_match_score(assist_command, command_name)
-                if score < worst_score and assist_command:
-                    continue
-                if assist_skip_app_command:
-                    name = f"{command_name.replace(" ", "_")} ({command["app_name"]})"
-                    value = f"{command["app_name"].lower().replace(" ", "_")} {command_name.replace(" ", "_")}"
-                else:
-                    name = command_name.replace(" ", "_")
-                    value = command_name.replace(" ", "_")
-                if command.get("description"):
-                    name += f" - {command["description"]}"
-                heapq.heappush(results, (name, value, score))
-                if len(results) > limit:
-                    heapq.heappop(results)
-                    worst_score = results[0][2]
-                found = True
-        if not found:    # skip my commands if found in guild commands
-            for command in my_commands:
-                if (command["app_name"].lower().replace(" ", "_") == assist_app_name or assist_skip_app_command) and ((not dm) or command.get("dm")):
-                    command_name = command["name"].lower()
-                    score = fuzzy_match_score(assist_command, command_name)
-                    if score < worst_score and assist_command:
-                        continue
-                    if assist_skip_app_command:
-                        name = f"{command_name.replace(" ", "_")} ({command["app_name"]})"
-                        value = f"{command["app_name"].lower().replace(" ", "_")} {command_name.replace(" ", "_")}"
-                    else:
-                        name = command_name.replace(" ", "_")
-                        value = command_name.replace(" ", "_")
-                    if command.get("description"):
-                        name += f" - {command["description"]}"
-                    heapq.heappush(results, (name, value, score))
-                    if len(results) > limit:
-                        heapq.heappop(results)
-                        worst_score = results[0][2]
-
-    elif depth == 3:   # group/subcommand/option
-        results.append(("EXECUTE", None, 10000))
-        assist_app_name = query_words[0].lower()
-        assist_command = query_words[1].lower()
-        assist_subcommand = query_words[2].replace("_", " ")
-        # find command
-        for num, command in enumerate(guild_commands):
-            if command["app_name"].lower().replace(" ", "_") == assist_app_name and guild_commands_permitted[num] and assist_command == command["name"].lower().replace(" ", "_"):
-                break
-        else:
-            for command in my_commands:
-                if command["app_name"].lower().replace(" ", "_") == assist_app_name and assist_command == command["name"].lower().replace(" ", "_") and ((not dm) or command.get("dm")):
-                    break
-            else:
-                command = None
-        if command:
-            # list groups/subcommands/options
-            for subcommand in command.get("options", []):
-                subcommand_name = subcommand["name"].lower()
-                score = fuzzy_match_score(assist_subcommand, subcommand_name)
-                if score < worst_score and assist_subcommand:
-                    continue
-                if subcommand["type"] == 1:
-                    name = f"{subcommand_name.replace(" ", "_")} - subcommand"
-                    value = subcommand_name.replace(" ", "_")
-                elif subcommand["type"] == 2:
-                    name = f"{subcommand_name.replace(" ", "_")} - group"
-                    value = subcommand_name.replace(" ", "_")
-                else:
-                    name = f"{subcommand_name.replace(" ", "_")} - option: {COMMAND_OPT_TYPE[int(subcommand["type"])-1]}"
-                    value = f"--{subcommand_name.replace(" ", "_")}="
-                if subcommand.get("required"):
-                    name += " (required)"
-                if subcommand.get("description"):
-                    name += f" - {subcommand["description"]}"
-                heapq.heappush(results, (name, value, score))
-                if len(results) > limit:
-                    heapq.heappop(results)
-                    worst_score = results[0][2]
-            # list option choices
-            else:
-                match = re.search(match_command_arguments, query_words[2].lower())
-                if match:
-                    for option in command.get("options", []):
-                        if option["name"].lower() == match.group(1):
-                            break
-                    else:
-                        option = None
-                    if option and "choices" in option:
-                        value = match.group(2).replace("_", " ") if match.group(2) else ""
-                        for choice in option["choices"]:
-                            score = fuzzy_match_score(value, choice["name"])
-                            if score < worst_score and value:
-                                continue
-                            heapq.heappush(results, (choice["name"], choice["value"], score))
-                            if len(results) > limit:
-                                heapq.heappop(results)
-                                worst_score = results[0][2]
-                    elif option and option.get("autocomplete"):
-                        autocomplete = True
-
-    elif depth == 4:   # groups subcommand and options
-        results.append(("EXECUTE", None, 10000))
-        assist_app_name = query_words[0].lower()
-        assist_command = query_words[1].lower()
-        assist_subcommand = query_words[2].lower()
-        assist_group_subcommand = query_words[3].replace("_", " ")
-        options_only = False
-        # find command
-        for num, command in enumerate(guild_commands):
-            if command["app_name"].lower().replace(" ", "_") == assist_app_name and guild_commands_permitted[num] and assist_command == command["name"].lower().replace(" ", "_"):
-                break
-        else:
-            for command in my_commands:
-                if command["app_name"].lower().replace(" ", "_") == assist_app_name and assist_command == command["name"].lower().replace(" ", "_") and ((not dm) or command.get("dm")):
-                    break
-            else:
-                command = None
-        if command:
-            # find subcommand
-            for subcommand in command.get("options", []):
-                if subcommand["name"].lower().replace(" ", "_") == assist_subcommand:
-                    break
-            else:
-                if re.search(match_command_arguments, assist_subcommand):
-                    subcommand = command   # when adding multiple options
-                    options_only = True
-                else:
-                    subcommand = None
-            if subcommand:
-                # list group_subcommands/options
-                for group_subcommand in subcommand.get("options", []):
-                    group_subcommand_name = group_subcommand["name"].lower()
-                    score = fuzzy_match_score(assist_group_subcommand, group_subcommand_name)
-                    if score < worst_score and assist_group_subcommand:
-                        continue
-                    if options_only and group_subcommand["type"] in (1, 2):
-                        continue   # skip non-options
-                    if group_subcommand["type"] == 1:
-                        name = f"{group_subcommand_name.replace(" ", "_")} - subcommand"
-                        value = group_subcommand_name.replace(" ", "_")
-                    else:
-                        name = f"{group_subcommand_name.replace(" ", "_")} - option: {COMMAND_OPT_TYPE[int(group_subcommand["type"])-1]}"
-                        value = f"--{group_subcommand_name.replace(" ", "_")}="
-                    if group_subcommand.get("required"):
-                        name += " (required)"
-                    if group_subcommand.get("description"):
-                        name += f" - {group_subcommand["description"]}"
-                    heapq.heappush(results, (name, value, score))
-                    if len(results) > limit:
-                        heapq.heappop(results)
-                        worst_score = results[0][2]
-                # list option choices
-                else:
-                    match = re.search(match_command_arguments, query_words[3].lower())
-                    if match:
-                        for option in subcommand.get("options", []):
-                            if option["name"].lower() == match.group(1):
-                                break
-                        else:
-                            option = None
-                        if option and "choices" in option:
-                            value = match.group(2).replace("_", " ") if match.group(2) else ""
-                            for choice in option["choices"]:
-                                score = fuzzy_match_score(value, choice["name"])
-                                if score < worst_score and value:
-                                    continue
-                                heapq.heappush(results, (choice["name"], choice["value"], score))
-                                if len(results) > limit:
-                                    heapq.heappop(results)
-                                    worst_score = results[0][2]
-                        elif option and option.get("autocomplete"):
-                            autocomplete = True
-
-    elif depth >= 5:   # options
-        results.append(("EXECUTE", None, 10000))
-        assist_app_name = query_words[0].lower()
-        assist_command = query_words[1].lower()
-        assist_subcommand = query_words[2].lower()
-        assist_group_subcommand = query_words[3].lower()
-        assist_option = query_words[4].replace("_", " ")
-        options_only = False
-        # find command
-        for num, command in enumerate(guild_commands):
-            if command["app_name"].lower().replace(" ", "_") == assist_app_name and guild_commands_permitted[num] and assist_command == command["name"].lower().replace(" ", "_"):
-                break
-        else:
-            for command in my_commands:
-                if command["app_name"].lower().replace(" ", "_") == assist_app_name and assist_command == command["name"].lower().replace(" ", "_") and ((not dm) or command.get("dm")):
-                    break
-            else:
-                command = None
-        if command:
-            # find subcommand
-            for subcommand in command.get("options", []):
-                if subcommand["name"].lower().replace(" ", "_") == assist_subcommand:
-                    break
-            else:
-                if re.search(match_command_arguments, assist_subcommand):
-                    subcommand = command   # when adding multiple options
-                    options_only = True
-                else:
-                    subcommand = None
-            if subcommand:
-                # find group subcommand
-                for group_subcommand in subcommand.get("options", []):
-                    if group_subcommand["name"].lower().replace(" ", "_") == assist_group_subcommand:
-                        break
-                else:
-                    if re.search(match_command_arguments, assist_group_subcommand):
-                        group_subcommand = subcommand   # when adding multiple options
-                        options_only = True
-                    else:
-                        group_subcommand = None
-                if group_subcommand:
-                    # list options
-                    for option in group_subcommand.get("options", []):
-                        option_name = option["name"].lower()
-                        score = fuzzy_match_score(assist_option, option_name)
-                        if score < worst_score and assist_option:
-                            continue
-                        if options_only and option["type"] in (1, 2):
-                            continue   # skip non-options
-                        name = f"{option_name.replace(" ", "_")} - option: {COMMAND_OPT_TYPE[int(option["type"])-1]}"
-                        value = f"--{option_name.replace(" ", "_")}="
-                        if option.get("required"):
-                            name += " (required)"
-                        if option.get("description"):
-                            name += f" - {option["description"]}"
-                        heapq.heappush(results, (name, value, score))
-                        if len(results) > limit:
-                            heapq.heappop(results)
-                            worst_score = results[0][2]
-                    # list option choices
-                    else:
-                        match = re.search(match_command_arguments, query_words[4].lower())
-                        if match:
-                            for option in group_subcommand.get("options", []):
-                                if option["name"].lower() == match.group(1):
-                                    break
-                            else:
-                                option = None
-                            if option and "choices" in option:
-                                value = match.group(2).replace("_", " ") if match.group(2) else ""
-                                for choice in option["choices"]:
-                                    score = fuzzy_match_score(value, choice["name"])
-                                    if score < worst_score and value:
-                                        continue
-                                    heapq.heappush(results, (choice["name"], choice["value"], score))
-                                    if len(results) > limit:
-                                        heapq.heappop(results)
-                                        worst_score = results[0][2]
-                            elif option and option.get("autocomplete"):
-                                autocomplete = True
-
-    return sorted(results, key=lambda x: x[2], reverse=True), autocomplete
+    """Compatibility wrapper for the deprecated slash-command assist search."""
+    return deprecated_search_app_commands(
+        guild_apps,
+        guild_commands,
+        my_apps,
+        my_commands,
+        depth,
+        guild_commands_permitted,
+        dm,
+        assist_skip_app_command,
+        match_command_arguments,
+        query,
+        limit,
+        score_cutoff,
+    )

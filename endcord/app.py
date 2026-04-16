@@ -2718,12 +2718,6 @@ class Endcord:
                     except ValueError:
                         pass
 
-                elif input_text[0] == "/" and parser.check_start_command(input_text, self.my_commands, self.guild_commands, self.guild_commands_permitted) and not self.disable_sending:
-                    if self.forum:
-                        self.update_extra_line("Cant run app command in forum.")
-                    else:
-                        self.execute_app_command(input_text)
-
                 elif self.slowmode_times.get(self.active_channel["channel_id"]):
                     self.restore_input_text = (input_text, "standard")
                     self.update_extra_line(f"Slowmode is enabled, will be able to send message in {self.slowmode_times[self.active_channel["channel_id"]]} s")
@@ -4081,7 +4075,10 @@ class Endcord:
 
 
     def execute_app_command(self, input_text, autocomplete=False):
-        """Parse and execute app command/autocomplete"""
+        """Deprecated slash/app command implementation."""
+        self.update_extra_line("Slash/app commands are deprecated and currently disabled.")
+        return
+
         command_data, app_id, need_attachment = parser.app_command_string(
             input_text,
             self.my_commands,
@@ -5550,7 +5547,13 @@ class Endcord:
 
 
     def assist(self, assist_word, assist_type, query_results=None):
-        """Assist when typing: channel, username, role, emoji and sticker"""
+        """Assist when typing: channel, emoji, sticker, and other live prompt helpers."""
+        if assist_type in (2, 6):
+            self.stop_assist()
+            self.assist_type = None
+            self.assist_found = []
+            return
+
         self.assist_type = assist_type
         self.assist_found = []
 
@@ -5801,6 +5804,9 @@ class Endcord:
 
     def insert_assist(self, input_text, index, start, end):
         """Insert specified assist to specified position in the text"""
+        if self.assist_type in (2, 6):
+            self.stop_assist()
+            return input_text, len(input_text)
         if index >= len(self.assist_found) or index < 0:
             return None, None
         if self.assist_type == 1:   # channel
@@ -8350,44 +8356,11 @@ class Endcord:
                     self.stop_assist()
                 elif assist_type == 100:
                     self.assist(self.tui.input_buffer, 5)
-                elif assist_type == 6:   # app commands
-                    if assist_word != self.assist_word and not (self.disable_sending or self.forum):
-                        self.ignore_typing = True
-                        if not self.got_commands:
-                            # this will be allowed to run when channel changes
-                            self.got_commands = True
-                            self.my_commands, self.my_apps = self.discord.get_my_commands()
-                            if self.active_channel["guild_id"]:
-                                self.guild_commands, self.guild_apps = self.discord.get_guild_commands(self.active_channel["guild_id"])
-                                # permissions depend on channel so they myt be computed each time
-                                self.guild_commands_permitted = perms.compute_command_permissions(
-                                    self.guild_commands,
-                                    self.guild_apps,
-                                    self.active_channel["channel_id"],
-                                    self.active_channel["guild_id"],
-                                    self.current_my_roles,
-                                    self.my_id,
-                                    self.active_channel["admin"],
-                                    self.current_channel.get("perms_computed", 0),
-                                )
-                        self.assist(assist_word, assist_type)
-                    elif not self.allow_app_command_autocomplete and time.time() - self.app_command_last_keypress >= APP_COMMAND_AUTOCOMPLETE_DELAY:
-                        self.allow_app_command_autocomplete = True
-                    app_command_autocomplete_resp = self.gateway.get_app_command_autocomplete_resp()
-                    if app_command_autocomplete_resp:
-                        self.app_command_autocomplete_resp = app_command_autocomplete_resp
-                        self.assist(assist_word, assist_type)
                 elif assist_word != self.assist_word:
                     self.assist(assist_word, assist_type)
             elif assist_type == 7 and assist_word != self.assist_word:   # path
                 paths = utils.complete_path(assist_word, separator=True)
                 self.assist(assist_word, assist_type, query_results=paths)
-
-            # check member assist query results
-            if self.assist_type == 2:
-                query_results = self.gateway.get_member_query_results()
-                if query_results:
-                    self.assist(self.assist_word, self.assist_type, query_results=query_results)
 
             # check gateway for errors
             if self.gateway.error:

@@ -49,7 +49,7 @@ Note: always put string in `""`. To use `"` inside the string escape it like thi
 - `show_pending_messages = True`  
     Show pending messages in chat with `color_chat_pending` until they are sent. Disable to save some CPU usage when sending messages.  
 - `assist = True`  
-  Assist when typing @username, @role, #channel, :emoji:, ::sticker::
+  Assist when typing #channel, :emoji:, ;sticker;. The legacy @mention/@role and slash/app helpers are deprecated.
 - `cursor_on_time = 0.7`  
     Time in seconds the cursor stays ON. Set to None or 0 to disable cursor blinking.
 - `cursor_off_time = 0.5`  
@@ -120,8 +120,7 @@ Note: always put string in `""`. To use `"` inside the string escape it like thi
 - `only_one_open_server = False`  
     Force only one open server at a time in tree. When one is opened other is closed, excluding DMs.
 - `assist_skip_app_command = False`  
-    Skip assist for app_name when typing app command. Instead, show all app commands and insert app_name with
-  selected command.
+    Deprecated for now. The legacy slash/app-command compose assist is disabled, so this setting is currently ignored.
 - `assist_limit = 50`  
     Maximum number of results when showing assist.
 - `assist_score_cutoff = 15`  
@@ -227,8 +226,8 @@ Note: always put string in `""`. To use `"` inside the string escape it like thi
     Formatting for single reaction string. Reactions string is assembled by joining these strings with `reactions_separator` in between. See [format_one_reaction](#format_one_reaction) for more info.
 - `format_timestamp = "%H:%M"`  
     Format for timestamps in messages. Same as [datetime format codes](https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes)
-- `format_status_line_l = " %global_name (%username) %afk %unreads %action %typing"`  
-    Formatting for left side of status line. See [format_status](#format_status) for more info. Set to None to disable.
+- `format_status_line_l = ""`  
+    Formatting for left side of status line. See [format_status](#format_status) for more info. Set to "" to hide it.
 - `format_status_line_r = "%slowmode"`  
     Formatting for right side of status line. See [format_status](#format_status) for more info.
 - `format_title_line_l = " %server: %channel"`  

@@ -101,7 +101,7 @@ theme = {
     "format_interaction": "                       ╭──⤙ %global_name used [%command]",
     "format_one_reaction": "%count:%reaction",
     "format_timestamp": "%H:%M",
-    "format_status_line_l": " %global_name (%username) %afk %unreads %action %typing",
+    "format_status_line_l": "",
     "format_status_line_r": "%slowmode",
     "format_title_line_l": " %server: %channel",
     "format_title_line_r": "%tabs",
@@ -246,7 +246,7 @@ keybindings = {
     "media_volume_down": 258,   # Down
 
     # other
-    "command_palette": 31,   # Ctrl+/
+    "command_palette": None,   # deprecated
     "cancel": 24,   # Ctrl+X
     "cycle_status": "ALT+100",   # Alt+D
     "toggle_member_list": "ALT+109",   # Alt+M
@@ -258,15 +258,8 @@ keybindings = {
 }
 
 
-command_bindings = {
-    "552": "switch_tab prev",
-    "567": "switch_tab next",
-    "11": "command_palette; type 'goto '",
-    "336": "tree_select server; collapse_all_except selected",
-    "337": "tree_select server prev; collapse_all_except selected",
-    "25-259": "resize_extra_window +1",
-    "25-258": "resize_extra_window -1",
-}
+# Legacy command-binding macros are deprecated and disabled.
+command_bindings = {}
 
 
 vim_mode_bindings = {
@@ -338,7 +331,7 @@ vim_mode_bindings = {
     "extra_select": "q",
     "preview_upload": "V",
     # other
-    "command_palette": ":",
+    "command_palette": None,
     "cancel": "x",
     "cycle_status": "s",
     "toggle_member_list": "m",
@@ -350,7 +343,7 @@ vim_mode_bindings = {
 }
 
 windows_override_keybindings = {
-    "command_palette": 28,   # Ctrl+\
+    "command_palette": None,   # deprecated
     "tree_up": 480,   # Ctrl+Up
     "tree_down": 481,   # Ctrl+Down
     "tree_select": 1,   # Ctrl+A
