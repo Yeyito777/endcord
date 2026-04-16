@@ -2903,11 +2903,13 @@ class TUI():
             if key in self.KEYBINDINGS_CHAT_UP or key in self.keybindings["tree_up"]:
                 self.set_active_section("tree")
                 if self.tree_selected >= 0:
+                    if key in self.KEYBINDINGS_CHAT_UP and self.tree_selected == 0:
+                        return None
                     if self.tree_index and self.tree_selected <= self.tree_index + 2:
                         self.tree_index -= 1
                     self.tree_selected -= 1
                     self.draw_tree()
-                elif self.wrap_around:
+                elif self.wrap_around and key not in self.KEYBINDINGS_CHAT_UP:
                     tree_end_index = self.get_tree_index(0)
                     self.tree_selected = tree_end_index
                     self.tree_index = max(self.tree_selected - (self.tree_hw[0] - 1), 0)
@@ -2921,7 +2923,7 @@ class TUI():
                         self.tree_index += 1
                     self.tree_selected += 1
                     self.draw_tree()
-                elif self.wrap_around:
+                elif self.wrap_around and key not in self.KEYBINDINGS_CHAT_DOWN:
                     self.tree_selected = 0
                     self.tree_index = 0
                     self.draw_tree()
