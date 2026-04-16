@@ -2307,12 +2307,13 @@ def generate_log(log, colors, max_width):
 
 def generate_extra_line(attachments, selected, max_len):
     """
-    Generate extra line containing attachments information, with format:
-    Attachments: [attachment.name] - [Uploading/OK/Too-Large/Restricted/Failed], Selected:N, Total:N
+    Generate extra line containing attachments information.
+    Single attachment: [attachment.name] - [Uploading/OK/Too-Large/Restricted/Failed]
+    Multiple attachments: [attachment.name] - [Uploading/OK/Too-Large/Restricted/Failed], Selected:N, Total:N
     """
     if attachments:
         total = len(attachments)
-        name = attachments[selected]["name"]
+        name = attachments[selected].get("display_name", attachments[selected]["name"])
         match attachments[selected]["state"]:
             case 0:
                 state = "Uploading"
@@ -2326,8 +2327,11 @@ def generate_extra_line(attachments, selected, max_len):
                 state = "Failed"
             case _:
                 state = "Unknown"
-        end = f" - {state}, Selected:{selected + 1}, Total:{total}"
-        return f" Attachments: {name}"[:max_len - len(end)] + end
+        end = f" - {state}"
+        if total > 1:
+            end += f", Selected:{selected + 1}, Total:{total}"
+        prefix = " " if attachments[selected].get("display_name") else " Attachments: "
+        return f"{prefix}{name}"[:max_len - len(end)] + end
     return ""
 
 

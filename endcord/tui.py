@@ -3164,10 +3164,11 @@ class TUI():
         return tmp, self.chat_selected, self.tree_selected_abs, code
 
 
-    def wait_input(self, prompt="", init_text=None, reset=True, keep_cursor=False, autocomplete=False, clear_delta=False, forum=False, command=False, press=None):
+    def wait_input(self, prompt="", init_text=None, reset=True, keep_cursor=False, autocomplete=False, clear_delta=False, forum=False, command=False, compose=False, press=None):
         """
         Take input from user, and show it on screen.
         Return typed text, absolute_tree_position and whether channel is changed.
+        compose=True enables prompt-local clipboard paste (Ctrl+V) for message composition.
         """
         _, w = self.input_hw
         self.enable_autocomplete = autocomplete
@@ -3662,6 +3663,9 @@ class TUI():
                 self.enable_autocomplete = True
                 self.misspelled = []
                 return self.return_input_code(13)
+
+            elif compose and key == 22 and self.active_section == "main" and self.chat_selected == -1:
+                return self.return_input_code(49)
 
             elif key in self.keybindings["view_media"] and self.chat_selected != -1:
                 return self.return_input_code(17)

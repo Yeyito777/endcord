@@ -36,7 +36,7 @@
 - `Ctrl+U` Upload attachments
 - `Ctrl+O` * - Open selected link in browser
 - `Ctrl+L` - Copy selected message to clipboard
-- `Ctrl+V` * - View selected attachment (image, gif, video, audio) in media player
+- `Ctrl+V` * - In the message prompt, paste clipboard text or add a clipboard image/file as an attachment. With a selected message, view the selected attachment (image, gif, video, audio) in media player
 - `Alt+S` - Reveal one spoiler in selected messages
 - `Ctrl+F` - Search messages in current server
 - `Alt+F` - Search gifs
@@ -45,7 +45,7 @@
 - `Alt+R` - Add reaction to selected message
 - `Alt+W` - Show reactions details for selected message
 - `Alt+N` - Show pinned messages in current channel
-- `Ctrl+Shift+V` - This is common terminal binding to paste text, better use: `paste` command
+- `Ctrl+Shift+V` - Common terminal-level paste. `Ctrl+V` now pastes inside the message prompt too, while `paste` command still works for explicit clipboard pasting
 
 ### extra line
 - `Alt+<` - Previous uploaded/uploading attachment
@@ -209,7 +209,7 @@ Special commands available only for command-bindings are documented in [Commands
 - `R` - Add reaction to selected message
 - `A` - Show reactions details for selected message
 - `n` - Show pinned messages in current channel
-- `Ctrl+Shift+V` - This is common terminal binding to paste text, better use: `paste` command
+- `Ctrl+Shift+V` - Common terminal-level paste. `Ctrl+V` now pastes inside the message prompt too, while `paste` command still works for explicit clipboard pasting
 
 ### extra line
 - `<` - Previous uploaded/uploading attachment

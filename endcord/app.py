@@ -1595,7 +1595,7 @@ class Endcord:
             if forced_binding:   # externally forced binding
                 init_text = self.restore_input_text[0]
                 self.stop_extra_window()
-                input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.prompt, init_text=init_text, reset=False, keep_cursor=True, forum=self.forum, press=forced_binding)
+                input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.prompt, init_text=init_text, reset=False, keep_cursor=True, forum=self.forum, compose=True, press=forced_binding)
                 ephemeral = True   # stop loop
             elif self.restore_input_text[1] == "prompt":
                 prompt_text = self.restore_input_text[0]
@@ -1614,7 +1614,7 @@ class Endcord:
                     self.stop_extra_window()
                 init_text = self.restore_input_text[0]
                 self.restore_input_text = (None, None)
-                input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.prompt, init_text=init_text, reset=False, keep_cursor=keep_cursor, forum=self.forum)
+                input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.prompt, init_text=init_text, reset=False, keep_cursor=keep_cursor, forum=self.forum, compose=True)
             elif self.restore_input_text[1] == "autocomplete":
                 init_text = self.restore_input_text[0]
                 self.restore_input_text = (None, None)
@@ -1642,9 +1642,9 @@ class Endcord:
                     self.tui.update_prompt(self.prompt)
                     self.tui.input_buffer = restore_text
                     self.tui.set_input_index(input_index)
-                    input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.prompt, init_text=restore_text, keep_cursor=True, reset=False, clear_delta=True, forum=self.forum)
+                    input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.prompt, init_text=restore_text, keep_cursor=True, reset=False, clear_delta=True, forum=self.forum, compose=True)
                 else:
-                    input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.prompt, clear_delta=True, forum=self.forum)
+                    input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.prompt, clear_delta=True, forum=self.forum, compose=True)
             logger.debug(f"Input code: {action}")
 
             # switch channel
@@ -2200,6 +2200,16 @@ class Endcord:
                 else:
                     self.restore_input_text = (input_text, "standard")
                 self.tui.resume_curses()
+
+            # paste clipboard into prompt, or upload clipboard image/file while composing
+            elif action == 49:
+                input_text, input_index = self.paste_clipboard(input_text, self.tui.input_index, allow_attachments=True)
+                self.tui.input_buffer = input_text
+                self.tui.set_input_index(input_index)
+                restore_context = self.previous_input_context
+                if restore_context not in ("standard", "standard extra", "standard insert"):
+                    restore_context = "standard"
+                self.restore_input_text = (input_text, restore_context)
 
             # up/down in command mode
             elif action == 46 and self.command:   # UP
@@ -3343,28 +3353,26 @@ class Endcord:
             self.update_extra_line(f"Account standing: {STANDING_TYPES[standing]}; Active violations: {violations}")
 
         elif cmd_type == 28:   # PASTE
-            paths = []
-            if shutil.which("xclip") or shutil.which("wl-paste"):
-                paths = peripherals.paste_clipboard_files(peripherals.temp_path)
-            elif support_media:
-                paths = peripherals.pillow_paste_image()
-            else:
-                self.update_extra_line("No media support.")
-            if isinstance(paths, str):
-                active_channel = self.active_channel["channel_id"]
-                for num, channel in enumerate(self.input_store):
-                    if channel["id"] == active_channel:
-                        input_text = self.input_store[num]["content"]
-                        input_index = self.input_store[num]["index"]
-                        self.input_store[num]["content"] = input_text[:input_index] + paths + input_text[input_index:]
-                        self.input_store[num]["index"] = input_index + len(paths)
-                        break
-            else:
-                for path in paths:
-                    self.upload_threads.append(threading.Thread(target=self.upload, daemon=True, args=(path, )))
-                    self.upload_threads[-1].start()
-                if not paths:
-                    self.update_extra_line("Image not found in clipboard.")
+            active_channel = self.active_channel["channel_id"]
+            store_index = None
+            input_text = ""
+            input_index = 0
+            for num, channel in enumerate(self.input_store):
+                if channel["id"] == active_channel:
+                    store_index = num
+                    input_text = channel["content"]
+                    input_index = channel["index"]
+                    break
+            input_text, input_index = self.paste_clipboard(input_text, input_index, allow_attachments=True, respect_selection=False)
+            if store_index is not None:
+                self.input_store[store_index]["content"] = input_text
+                self.input_store[store_index]["index"] = input_index
+            elif input_text:
+                self.input_store.append({
+                    "id": active_channel,
+                    "content": input_text,
+                    "index": input_index,
+                })
 
         elif cmd_type == 29:   # TOGGLE_MUTE
             channel_id = cmd_args.get("channel_id")
@@ -4546,6 +4554,80 @@ class Endcord:
         return True
 
 
+    def read_clipboard_payload(self):
+        """Read clipboard as either pasted text or file/image paths."""
+        if shutil.which("xclip") or shutil.which("wl-paste"):
+            return peripherals.paste_clipboard_files(peripherals.temp_path)
+        if support_media:
+            return peripherals.pillow_paste_image()
+        self.update_extra_line("No media support.")
+        return None
+
+
+    def format_attachment_size(self, size):
+        """Format attachment size for compact UI labels."""
+        if size < 1024:
+            return f"{size} B"
+        if size < 1024 * 1024:
+            return f"{size / 1024:.1f} KB"
+        return f"{size / (1024 * 1024):.1f} MB"
+
+
+    def get_pasted_attachment_display_name(self, path, size):
+        """Return Exocortex-style label for clipboard-pasted attachments."""
+        mime = utils.get_mime(path)
+        category, _, subtype = mime.partition("/")
+        subtype = subtype.upper()
+        if not subtype or subtype == "UNKNOWN":
+            subtype = os.path.splitext(path)[1].lstrip(".").upper() or "FILE"
+        if subtype == "JPEG":
+            subtype = "JPG"
+        noun = "Image" if category == "image" else "File"
+        return f"📎 {noun} pasted ({subtype}, {self.format_attachment_size(size)})"
+
+
+    def paste_clipboard(self, input_text="", input_index=0, allow_attachments=False, respect_selection=True):
+        """Paste clipboard text into the prompt, or upload clipboard files/images as attachments."""
+        payload = self.read_clipboard_payload()
+        if payload is None:
+            return input_text, input_index
+
+        if isinstance(payload, str):
+            if respect_selection and self.tui.input_select_start is not None and self.tui.input_select_end is not None:
+                select_start = min(self.tui.input_select_start, self.tui.input_select_end)
+                select_end = max(self.tui.input_select_start, self.tui.input_select_end)
+                input_text = input_text[:select_start] + payload + input_text[select_end:]
+                input_index = select_start + len(payload)
+                self.tui.input_select_start = None
+                self.tui.input_select_end = None
+            else:
+                input_text = input_text[:input_index] + payload + input_text[input_index:]
+                input_index += len(payload)
+            return input_text, input_index
+
+        if not payload:
+            self.update_extra_line("Clipboard does not contain an image or file.")
+            return input_text, input_index
+
+        if not allow_attachments:
+            self.update_extra_line("Clipboard images/files can only be pasted while composing a message.")
+            return input_text, input_index
+
+        if not self.current_channel.get("allow_attach", True):
+            self.update_extra_line("Uploading is not allowed in this channel.")
+            return input_text, input_index
+
+        if self.recording:
+            self.recording = False
+            _ = recorder.stop()
+
+        channel_id = self.active_channel["channel_id"]
+        for path in payload:
+            self.upload_threads.append(threading.Thread(target=self.upload, daemon=True, args=(path, channel_id, True)))
+            self.upload_threads[-1].start()
+        return input_text, input_index
+
+
     def download_file(self, url, move=True, open_media=False, open_move=False):
         """Thread that downloads and moves file to downloads dir"""
         if url.startswith("https://media.tenor.com/"):
@@ -4616,8 +4698,8 @@ class Endcord:
                 self.cached_downloads.append([orig_url, destination])
 
 
-    def upload(self, path, channel_id=None):
-        """Thread that uploads file to currently open channel"""
+    def upload(self, path, channel_id=None, from_clipboard=False):
+        """Thread that uploads file to currently open channel."""
         path = os.path.expanduser(path)
         if not os.path.exists(path):
             self.update_extra_line("Cant upload file: file does not exist")
@@ -4638,16 +4720,20 @@ class Endcord:
             self.update_extra_line("Cant upload over cloudflare. File is larger than 200MB.")
             return
 
-        # add attachment to list
-        if channel_id not in self.ready_attachments:
-            self.ready_attachments[channel_id] = []
-        self.ready_attachments[channel_id].append({
+        attachment = {
             "path": path,
             "name": os.path.basename(path),
             "upload_url": None,
             "upload_filename": None,
             "state": 0,   # 0 - uploading, 1 - done, 2 - too large, 3 - restricted, 4 - failed
-        })
+        }
+        if from_clipboard:
+            attachment["display_name"] = self.get_pasted_attachment_display_name(path, size)
+
+        # add attachment to list
+        if channel_id not in self.ready_attachments:
+            self.ready_attachments[channel_id] = []
+        self.ready_attachments[channel_id].append(attachment)
         at_index = len(self.ready_attachments[channel_id]) - 1
 
         self.add_running_task("Uploading file", 2)
