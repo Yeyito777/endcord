@@ -189,6 +189,9 @@ class Endcord:
         }
         self.guilds = []
         self.guild_folders = []
+        self.guild_folders_sync_lock = threading.Lock()
+        self.guild_folders_sync_pending = None
+        self.guild_folders_sync_running = False
         self.all_roles = []
         self.current_roles = []
         self.current_guild_properties = {}
@@ -1105,6 +1108,142 @@ class Endcord:
         return folder_changed
 
 
+    def get_adjacent_visible_server_id(self, tree_sel, direction):
+        """Return the previous/next visible server id from current tree selection."""
+        if tree_sel is None or tree_sel < 0 or tree_sel >= len(self.tree_metadata):
+            return None
+        selected = self.tree_metadata[tree_sel]
+        if not selected or selected["type"] != -1:
+            return None
+        index = tree_sel + direction
+        while 0 <= index < len(self.tree_metadata):
+            obj = self.tree_metadata[index]
+            if obj and obj["type"] == -1:
+                return obj["id"]
+            index += direction
+        return None
+
+
+    def get_ordered_guild_folders(self):
+        """Return guild-folder order with any missing guilds appended as a synthetic group."""
+        guild_folders = []
+        found = set()
+        for folder in self.guild_folders:
+            guild_ids = folder["guilds"][:]
+            if not guild_ids:
+                continue
+            guild_folders.append({
+                "id": folder["id"],
+                "guilds": guild_ids,
+            })
+            found.update(guild_ids)
+        missing_guilds = [guild["guild_id"] for guild in self.guilds if guild["guild_id"] not in found]
+        if missing_guilds:
+            guild_folders.append({
+                "id": "MISSING",
+                "guilds": missing_guilds,
+            })
+        return guild_folders
+
+
+    def serialize_guild_folders(self, guild_folders):
+        """Convert local guild-folder ordering into the account settings proto shape."""
+        folders = []
+        guild_positions = []
+        for folder in guild_folders:
+            guild_ids = folder["guilds"][:]
+            if not guild_ids:
+                continue
+            folder_data = {"guildIds": guild_ids}
+            if folder["id"] and folder["id"] != "MISSING":
+                folder_data["id"] = folder["id"]
+            folders.append(folder_data)
+            guild_positions.extend(guild_ids)
+        return {
+            "folders": folders,
+            "guildPositions": guild_positions,
+        }
+
+
+    def ensure_guild_folders_sync_state(self):
+        """Initialize optimistic guild-order sync state when absent."""
+        if not hasattr(self, "guild_folders_sync_lock"):
+            self.guild_folders_sync_lock = threading.Lock()
+            self.guild_folders_sync_pending = None
+            self.guild_folders_sync_running = False
+
+
+    def sync_guild_folders_worker(self):
+        """Flush optimistic guild-order updates to Discord, coalescing to the latest state."""
+        while True:
+            with self.guild_folders_sync_lock:
+                guild_folders_settings = self.guild_folders_sync_pending
+                self.guild_folders_sync_pending = None
+                if guild_folders_settings is None:
+                    self.guild_folders_sync_running = False
+                    return
+            self.discord.patch_settings_proto(1, {"guildFolders": guild_folders_settings}, retries=3)
+
+
+    def schedule_guild_folders_sync(self, guild_folders_settings):
+        """Queue an optimistic guild-order sync, keeping only the most recent desired order."""
+        self.ensure_guild_folders_sync_state()
+        with self.guild_folders_sync_lock:
+            self.guild_folders_sync_pending = guild_folders_settings
+            if self.guild_folders_sync_running:
+                return
+            self.guild_folders_sync_running = True
+        threading.Thread(target=self.sync_guild_folders_worker, daemon=True).start()
+
+
+    def move_tree_server(self, tree_sel, direction):
+        """Move the selected visible server up/down once and persist its order."""
+        if direction not in (-1, 1):
+            return False
+        if tree_sel is None or tree_sel < 0 or tree_sel >= len(self.tree_metadata):
+            return False
+        selected = self.tree_metadata[tree_sel]
+        if not selected or selected["type"] != -1:
+            return False
+        guild_id = selected["id"]
+        target_id = self.get_adjacent_visible_server_id(tree_sel, direction)
+        if target_id is None:
+            return False
+
+        guild_folders = self.get_ordered_guild_folders()
+        if not guild_folders:
+            return False
+        guild_order = [guild for folder in guild_folders for guild in folder["guilds"]]
+        try:
+            current_index = guild_order.index(guild_id)
+            target_index = guild_order.index(target_id)
+        except ValueError:
+            return False
+        guild_order[current_index], guild_order[target_index] = guild_order[target_index], guild_order[current_index]
+
+        offset = 0
+        new_guild_folders = []
+        for folder in guild_folders:
+            count = len(folder["guilds"])
+            new_guild_folders.append({
+                "id": folder["id"],
+                "guilds": guild_order[offset:offset+count],
+            })
+            offset += count
+
+        guild_folders_settings = self.serialize_guild_folders(new_guild_folders)
+        self.guild_folders = new_guild_folders
+        if not isinstance(self.discord_settings, dict):
+            self.discord_settings = {}
+        self.discord_settings["guildFolders"] = guild_folders_settings
+        self.update_tree()
+        new_tree_pos = self.tree_pos_from_id(guild_id)
+        if new_tree_pos is not None:
+            self.tui.tree_select(new_tree_pos)
+        self.schedule_guild_folders_sync(guild_folders_settings)
+        return True
+
+
     def select_current_channels(self, parent_hint=None, refresh=False):
         """Select current channels and current channel objects and update things related to them"""
         # update list of channels
@@ -1723,6 +1862,15 @@ class Endcord:
                 if self.tree_metadata[tree_sel]:
                     guild_id = self.tree_metadata[tree_sel]["id"]
                 self.open_guild(guild_id, select=True)
+
+            # move selected server in tree
+            elif action == 79:
+                self.restore_input_text = (input_text, "standard")
+                self.move_tree_server(tree_sel, -1)
+
+            elif action == 80:
+                self.restore_input_text = (input_text, "standard")
+                self.move_tree_server(tree_sel, 1)
 
             # copy/cut on input line
             elif action == 20:

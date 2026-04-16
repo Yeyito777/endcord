@@ -279,6 +279,8 @@ vim_mode_bindings = {
     "tree_up": "K",
     "tree_down": "J",
     "tree_select": " ",
+    "tree_server_up": "e",
+    "tree_server_down": "E",
     "tree_collapse_threads": "W",
     "tree_join_thread": "O",
     "channel_info": "I",

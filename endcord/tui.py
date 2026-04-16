@@ -329,6 +329,8 @@ class TUI():
         self.KEYBINDINGS_INPUT_LEFT = self.keybindings["input_left"]
         self.KEYBINDINGS_INPUT_RIGHT = self.keybindings["input_right"]
         self.KEYBINDINGS_FOCUS_HISTORY = self.keybindings.get("focus_history", ())
+        self.KEYBINDINGS_TREE_SERVER_UP = self.keybindings.get("tree_server_up", ())
+        self.KEYBINDINGS_TREE_SERVER_DOWN = self.keybindings.get("tree_server_down", ())
 
         # initial values
         self.disable_drawing = False
@@ -2893,6 +2895,11 @@ class TUI():
     def common_keybindings(self, key, mouse=False, switch=False, command=False, forum=False):
         """Handle keybinding events that can be executed by mouse events"""
         if self.active_section == "tree" and self.vim_mode and not self.insert_mode:
+            if 0 <= self.tree_selected_abs < len(self.tree_format) and 100 <= self.tree_format[self.tree_selected_abs] <= 199:
+                if key in self.KEYBINDINGS_TREE_SERVER_UP:
+                    return 79
+                if key in self.KEYBINDINGS_TREE_SERVER_DOWN:
+                    return 80
             if key in self.KEYBINDINGS_CHAT_UP or key in self.keybindings["tree_up"]:
                 self.set_active_section("tree")
                 if self.tree_selected >= 0:

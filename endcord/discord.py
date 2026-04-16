@@ -603,14 +603,14 @@ class Discord():
         return False
 
 
-    def patch_settings_proto(self, num, data):
+    def patch_settings_proto(self, num, data, retries=0):
         """
-        Patch account settings
+        Patch account settings.
+        retries specifies extra retry attempts for rate-limited responses.
         num=1 - General user settings
         num=2 - Frecency and favorites storage for various things"""
         if not self.protos[num-1]:
             self.get_settings_proto(num)
-        self.protos[num-1].update(data)
         if num == 1:
             encoded = base64.b64encode(ParseDict(data, user_settings_pb2.UserSettings()).SerializeToString()).decode("utf-8")
         elif num == 2:
@@ -620,12 +620,29 @@ class Discord():
 
         message_data = json.dumps({"settings": encoded})
         url = f"/api/v9/users/@me/settings-proto/{num}"
-        data, status = self.request("PATCH", url, message_data, self.header)
-        if not status:
-            return None
-        if status == 200:
-            return True
-        log_api_error(data, status, "patch_settings_proto")
+        attempts = max(int(retries), 0) + 1
+        while attempts > 0:
+            response_data, status = self.request("PATCH", url, message_data, self.header)
+            if not status:
+                return None
+            if status == 200:
+                if self.protos[num-1]:
+                    self.protos[num-1].update(data)
+                else:
+                    self.protos[num-1] = data
+                return True
+            attempts -= 1
+            if status == 429 and attempts > 0:
+                retry_after = 1
+                if response_data:
+                    try:
+                        retry_after = float(json.loads(response_data).get("retry_after", retry_after))
+                    except (ValueError, TypeError, json.JSONDecodeError):
+                        pass
+                time.sleep(max(retry_after, 0) + 0.25)
+                continue
+            log_api_error(response_data, status, "patch_settings_proto")
+            return False
         return False
 
 

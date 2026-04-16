@@ -160,6 +160,7 @@ Special commands available only for command-bindings are documented in [Commands
 - `K/J` - Navigating channel tree
 - When the conversations/tree pane is focused, `k/j` also move through it
 - `Space` - Expand selected categories and servers or enter selected channel
+- `e/E` - Move the selected server up/down one visible server slot
 - `W` - Un/collapse channel with threads in tree
 - `O` - Join/leave selected thread in tree
 - `I` - View channel info (selected in tree)
