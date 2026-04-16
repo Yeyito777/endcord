@@ -1026,6 +1026,16 @@ class Endcord:
         self.update_tree()
 
 
+    def get_guild_category_ids(self, guild_id):
+        """Return category ids for specified guild."""
+        if not guild_id:
+            return []
+        for guild in self.guilds:
+            if guild["guild_id"] == guild_id:
+                return [channel["id"] for channel in guild["channels"] if channel["type"] == 4]
+        return []
+
+
     def open_guild(self, guild_id, select=False, restore=False, open_only=False, one_open=False, dont_close_this=False, direction=0):
         """When opening guild in tree"""
         # check in tree_format if it should be un-/collapsed
@@ -1095,6 +1105,11 @@ class Endcord:
                     collapsed.remove(folder["id"])
                     folder_changed = True
                 break
+
+        if not collapse and guild_id not in collapsed:
+            for category_id in self.get_guild_category_ids(guild_id):
+                if category_id not in collapsed:
+                    collapsed.append(category_id)
 
         self.update_tree(collapsed=collapsed)
 
