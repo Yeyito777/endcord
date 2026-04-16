@@ -567,18 +567,30 @@ class TUI():
         self.draw_chat()
 
 
+    def get_chat_hwyx(self, h, w):
+        """Return chat window geometry for the current layout."""
+        if self.win_extra_window:
+            common_h = h - 3 - self.have_title - 2*self.bordered - self.extra_window_h
+        elif self.win_extra_line:
+            common_h = h - 3 - self.have_title - 2*self.bordered
+        else:
+            common_h = h - 2 - self.have_title - 2*self.bordered
+        chat_hwyx = (
+            common_h,
+            w - (self.tree_width + 3 * self.bordered + 1) - bool(self.member_list) * (self.member_list_width + 1),
+            self.have_title,
+            self.tree_width + 2 * self.bordered + 1,
+        )
+        return chat_hwyx, common_h
+
+
     def resize_bordered(self, redraw_only=False):
         """Resize screen area and redraw ui in bordered mode"""
         if self.disable_drawing:
             return
 
         h, w = self.screen.getmaxyx()
-        chat_hwyx = (
-            h - 4 - self.have_title,
-            w - (self.tree_width + 4) - bool(self.member_list),
-            self.have_title,
-            self.tree_width + 3,
-        )
+        chat_hwyx, _ = self.get_chat_hwyx(h, w)
         win_prompt_input_line = (1, w - self.tree_width - 4, h - 2, self.tree_width + 3)
         tree_hwyx = (h - self.have_title_tree - 1, self.tree_width, self.have_title, 1)
         self.chat_border_hwyx = chat_hwyx
@@ -656,18 +668,8 @@ class TUI():
     def init_chat(self):
         """Initialize chat window"""
         h, w = self.screen.getmaxyx()
-        if self.win_extra_window:
-            common_h = h - 3 - self.have_title - 2*self.bordered - self.extra_window_h
-        elif self.win_extra_line:
-            common_h = h - 3 - self.have_title - 2*self.bordered
-        else:
-            common_h = h - 2 - self.have_title - 2*self.bordered
-        chat_hwyx = (
-            common_h,
-            w - (self.tree_width + 3 * self.bordered + 1) - bool(self.member_list) * (self.member_list_width + 1),
-            self.have_title,
-            self.tree_width + 2 * self.bordered + 1,
-        )
+        chat_hwyx, common_h = self.get_chat_hwyx(h, w)
+        self.chat_border_hwyx = chat_hwyx
         self.win_chat = self.screen.derwin(*chat_hwyx)
         self.chat_hw = self.win_chat.getmaxyx()
         if self.bordered:
