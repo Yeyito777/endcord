@@ -174,5 +174,8 @@ def main(args):
 
 if __name__ == "__main__":
     args = arg.parser(APP_NAME, VERSION, default_config_path, log_path)
-    signal.signal(signal.SIGINT, sigint_handler)
+    for signal_name in ("SIGINT", "SIGHUP", "SIGTERM"):
+        signum = getattr(signal, signal_name, None)
+        if signum is not None:
+            signal.signal(signum, sigint_handler)
     main(args)

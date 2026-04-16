@@ -322,11 +322,15 @@ class Endcord:
         # threading.Thread(target=self.profiling_auto_exit, daemon=True).start()
         self.discord.get_voice_regions()
 
-        # init sigint handler - replaces handler from main.py
-        try:
-            signal.signal(signal.SIGINT, self.sigint_handler)
-        except ValueError:
-            pass   # error when ran in pgcurses
+        # init shutdown handlers - replaces handlers from main.py
+        for signal_name in ("SIGINT", "SIGHUP", "SIGTERM"):
+            signum = getattr(signal, signal_name, None)
+            if signum is None:
+                continue
+            try:
+                signal.signal(signum, self.sigint_handler)
+            except ValueError:
+                pass   # error when ran in pgcurses
 
         # init extensions
         if config["extensions"] and ENABLE_EXTENSIONS:
@@ -1408,6 +1412,21 @@ class Endcord:
                 return tree_pos
 
 
+    def wait_tui_input(self, *args, **kwargs):
+        """Wait for TUI input and stop the app cleanly if the terminal disappears."""
+        try:
+            return self.tui.wait_input(*args, **kwargs)
+        except EOFError:
+            logger.info("Terminal disconnected, stopping endcord")
+            if self.terminal_media:
+                self.terminal_media.stop_playback()
+            self.gateway.disconnect_ws()
+            self.run = False
+            self.tui.run = False
+            self.tui.need_update.set()
+            return "", -1, 0, 34
+
+
     def wait_input(self, forced_binding=None):
         """Thread that handles: getting input, formatting, sending, replying, editing, deleting message and switching channel"""
         logger.info("Input handler loop started")
@@ -1422,16 +1441,16 @@ class Endcord:
             if forced_binding:   # externally forced binding
                 init_text = self.restore_input_text[0]
                 self.stop_extra_window()
-                input_text, chat_sel, tree_sel, action = self.tui.wait_input(self.prompt, init_text=init_text, reset=False, keep_cursor=True, forum=self.forum, press=forced_binding)
+                input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.prompt, init_text=init_text, reset=False, keep_cursor=True, forum=self.forum, press=forced_binding)
                 ephemeral = True   # stop loop
             elif self.restore_input_text[1] == "prompt":
                 prompt_text = self.restore_input_text[0]
                 self.stop_extra_window()
                 self.restore_input_text = (None, "after prompt")
                 if prompt_text:
-                    input_text, chat_sel, tree_sel, action = self.tui.wait_input(self.custom_prompt(prompt_text), forum=self.forum)
+                    input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.custom_prompt(prompt_text), forum=self.forum)
                 else:
-                    input_text, chat_sel, tree_sel, action = self.tui.wait_input(self.prompt, forum=self.forum)
+                    input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.prompt, forum=self.forum)
             elif self.restore_input_text[1] in ("standard", "standard extra", "standard insert"):
                 keep_cursor = True
                 if self.restore_input_text[1] == "standard" and not self.restore_input_text[0].startswith("/"):
@@ -1441,11 +1460,11 @@ class Endcord:
                     self.stop_extra_window()
                 init_text = self.restore_input_text[0]
                 self.restore_input_text = (None, None)
-                input_text, chat_sel, tree_sel, action = self.tui.wait_input(self.prompt, init_text=init_text, reset=False, keep_cursor=keep_cursor, forum=self.forum)
+                input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.prompt, init_text=init_text, reset=False, keep_cursor=keep_cursor, forum=self.forum)
             elif self.restore_input_text[1] == "autocomplete":
                 init_text = self.restore_input_text[0]
                 self.restore_input_text = (None, None)
-                input_text, chat_sel, tree_sel, action = self.tui.wait_input(self.custom_prompt("PATH"), init_text=init_text, autocomplete=True, forum=self.forum)
+                input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.custom_prompt("PATH"), init_text=init_text, autocomplete=True, forum=self.forum)
             elif self.restore_input_text[1] in ("search", "command", "react", "edit"):
                 init_text = self.restore_input_text[0]
                 prompt_text = self.restore_input_text[1]
@@ -1454,7 +1473,7 @@ class Endcord:
                 prompt_text = prompt_text.upper()
                 command = self.restore_input_text[1] == "command"
                 self.restore_input_text = (None, None)
-                input_text, chat_sel, tree_sel, action = self.tui.wait_input(self.custom_prompt(prompt_text), init_text=init_text, forum=self.forum, command=command)
+                input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.custom_prompt(prompt_text), init_text=init_text, forum=self.forum, command=command)
             else:
                 restore_text = None
                 input_index = 0
@@ -1469,9 +1488,9 @@ class Endcord:
                     self.tui.update_prompt(self.prompt)
                     self.tui.input_buffer = restore_text
                     self.tui.set_input_index(input_index)
-                    input_text, chat_sel, tree_sel, action = self.tui.wait_input(self.prompt, init_text=restore_text, keep_cursor=True, reset=False, clear_delta=True, forum=self.forum)
+                    input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.prompt, init_text=restore_text, keep_cursor=True, reset=False, clear_delta=True, forum=self.forum)
                 else:
-                    input_text, chat_sel, tree_sel, action = self.tui.wait_input(self.prompt, clear_delta=True, forum=self.forum)
+                    input_text, chat_sel, tree_sel, action = self.wait_tui_input(self.prompt, clear_delta=True, forum=self.forum)
             logger.debug(f"Input code: {action}")
 
             # switch channel

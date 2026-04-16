@@ -1153,6 +1153,12 @@ class TUI():
         )
 
 
+    def ensure_terminal_connected(self):
+        """Raise EOFError when the controlling terminal has disappeared."""
+        if not uses_pgcurses and utils.terminal_disconnected():
+            raise EOFError("Terminal disconnected")
+
+
     def sync_terminal_cursor(self):
         """Sync terminal cursor visibility and position with current input state."""
         if uses_pgcurses:
@@ -1411,6 +1417,20 @@ class TUI():
             self.spellcheck()
             self.set_vim_insert(True)
             return 28
+        if key == ord("0"):
+            self.input_index = self.get_input_line_start()
+            self.keep_input_index_on_screen()
+            self.input_select_start = None
+            self.spellcheck()
+            return -1
+        if key == ord("$"):
+            line_start = self.get_input_line_start()
+            line_end = self.get_input_line_end()
+            self.input_index = max(line_start, line_end - 1)
+            self.keep_input_index_on_screen()
+            self.input_select_start = None
+            self.spellcheck()
+            return -1
         if key == ord("b"):
             self.move_input_with_motion("word_left")
             self.spellcheck()
@@ -3041,8 +3061,10 @@ class TUI():
         key = -1
         self.screen.timeout(200)
         while self.run:
+            self.ensure_terminal_connected()
             while self.disable_drawing:
                 time.sleep(0.2)
+                self.ensure_terminal_connected()
             if press:
                 key = press
             else:
@@ -3789,6 +3811,7 @@ class TUI():
         first = True
         try:
             while self.run:
+                self.ensure_terminal_connected()
                 key = self.screen.getch()
                 if key != curses.KEY_MOUSE:
                     continue

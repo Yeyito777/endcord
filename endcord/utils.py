@@ -75,6 +75,25 @@ def ensure_terminal():
     sys.exit(0)
 
 
+def terminal_disconnected():
+    """Return True when the process has lost its controlling terminal."""
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        try:
+            fd = stream.fileno()
+        except (AttributeError, OSError, ValueError):
+            return True
+        try:
+            if not os.isatty(fd):
+                return True
+            if sys.platform == "linux":
+                target = os.readlink(f"/proc/self/fd/{fd}")
+                if target.endswith(" (deleted)"):
+                    return True
+        except OSError:
+            return True
+    return False
+
+
 def ensure_ssl_certificates():
     """Ensure that there are ssl certificates available to http.client module"""
     if not ("__compiled__" in globals() or getattr(sys, "frozen", False)):   # skip if running from source

@@ -6,6 +6,8 @@
 import curses
 import sys
 
+from endcord import utils
+
 message = """ Press key combination, its code will be printed in terminal.
  Use this code to set this key combination in config.ini keybinding section.
  Some key combinations are reserved by terminal: Ctrl+ C/I/J/M/Q/S/Z.
@@ -57,6 +59,8 @@ def picker_internal(screen, keybindings, command_bindings):
     screen.addstr(1, 0, message)
     command_bindings = [(val, key) for key, val in command_bindings.items()]
     while True:
+        if utils.terminal_disconnected():
+            return
         key_code = get_key(screen)
         if key_code == 27:   # escape sequence, when ALT+KEY is pressed
             screen.nodelay(True)
