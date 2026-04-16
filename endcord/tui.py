@@ -28,6 +28,31 @@ else:
     BACKSPACE = curses.KEY_BACKSPACE
 BUTTON4_PRESSED = getattr(curses, "BUTTON4_PRESSED", 0)
 BUTTON5_PRESSED = getattr(curses, "BUTTON5_PRESSED", 0)
+FKEY_BASE = getattr(curses, "KEY_F0", 264)
+CTRL_NUM_FKEY_MAP = {
+    FKEY_BASE + 14: 1,
+    FKEY_BASE + 15: 2,
+    FKEY_BASE + 16: 3,
+    FKEY_BASE + 17: 4,
+    FKEY_BASE + 18: 5,
+    FKEY_BASE + 19: 6,
+    FKEY_BASE + 20: 7,
+    FKEY_BASE + 21: 8,
+    FKEY_BASE + 22: 9,
+}
+CTRL_NUM_CSI_QRS_MAP = {
+    81: 1,   # Q
+    82: 2,   # R
+    83: 3,   # S
+}
+CTRL_NUM_CSI_TILDE_MAP = {
+    "15;2": 4,
+    "17;2": 5,
+    "18;2": 6,
+    "19;2": 7,
+    "20;2": 8,
+    "21;2": 9,
+}
 match_word = re.compile(r"\w")
 match_split = re.compile(r"[^\w']")
 match_spaces = re.compile(r" {3,}")
@@ -103,6 +128,62 @@ def safe_drawch(screen, y, x, character, color):
             screen.addstr(y, x, character, color)
         except curses.error:
             safe_insch(screen, y, x, character, color)
+
+
+
+def parse_ctrl_num_key(key):
+    """Return Ctrl+digit number from curses function-key remaps, if any."""
+    if isinstance(key, int):
+        return CTRL_NUM_FKEY_MAP.get(key)
+    return None
+
+
+
+def parse_ctrl_num_escape(sequence):
+    """Return Ctrl+digit number from common terminal escape sequences, if any."""
+    if not sequence or sequence[:2] != [27, 91]:
+        return None
+    if sequence[-1] == -1:
+        sequence = sequence[:-1]
+    if len(sequence) < 4:
+        return None
+    final = sequence[-1]
+    try:
+        params = "".join(chr(ch) for ch in sequence[2:-1])
+    except ValueError:
+        return None
+
+    # st/remapped terminals: Ctrl+1..3 -> F14..F16 via CSI 1;2Q/R/S
+    if params == "1;2" and final in CTRL_NUM_CSI_QRS_MAP:
+        return CTRL_NUM_CSI_QRS_MAP[final]
+
+    # st/remapped terminals: Ctrl+4..9 -> F17..F22 via CSI NN;2~
+    if final == 126:
+        if params in CTRL_NUM_CSI_TILDE_MAP:
+            return CTRL_NUM_CSI_TILDE_MAP[params]
+
+        # CSI 27;5;<ascii>~ (xterm modifyOtherKeys)
+        parts = params.split(";")
+        if len(parts) >= 3 and parts[0] == "27" and parts[1] == "5":
+            try:
+                key_code = int(parts[2])
+            except ValueError:
+                return None
+            if 49 <= key_code <= 57:
+                return key_code - 48
+
+    # CSI <ascii>;5u (fixterms/kitty keyboard protocol)
+    if final == 117:
+        parts = params.split(";")
+        if len(parts) >= 2 and parts[1] == "5":
+            try:
+                key_code = int(parts[0])
+            except ValueError:
+                return None
+            if 49 <= key_code <= 57:
+                return key_code - 48
+
+    return None
 
 
 def select_word(text, index):
@@ -584,6 +665,26 @@ class TUI():
         return chat_hwyx, common_h
 
 
+    def get_member_list_hwyx(self, h=None, w=None):
+        """Return member-list window geometry for the current layout."""
+        if h is None or w is None:
+            h, w = self.screen.getmaxyx()
+        _, common_h = self.get_chat_hwyx(h, w)
+        return (
+            common_h,
+            self.member_list_width - self.bordered,
+            self.bordered or self.have_title,
+            w - self.member_list_width,
+        )
+
+
+    def redraw_member_list_border(self, h=None, w=None):
+        """Redraw member-list border using the current layout geometry."""
+        if not self.bordered or not self.member_list:
+            return
+        self.draw_border(self.get_member_list_hwyx(h, w), section="member")
+
+
     def resize_bordered(self, redraw_only=False):
         """Resize screen area and redraw ui in bordered mode"""
         if self.disable_drawing:
@@ -976,8 +1077,7 @@ class TUI():
         if self.have_title_tree:
             self.draw_title_tree()
         if self.win_member_list:
-            member_list_hwyx = self.win_member_list.getmaxyx() + self.win_member_list.getbegyx()
-            self.draw_border(member_list_hwyx, top=not(self.have_title), section="member")
+            self.redraw_member_list_border()
         if self.win_extra_window:
             extra_window_hwyx = self.win_extra_window.getmaxyx() + self.win_extra_window.getbegyx()
             self.draw_border(extra_window_hwyx, top=False, bot=False, section="extra")
@@ -1686,63 +1786,9 @@ class TUI():
         self.dont_hide_chat_selection = not(allow)
 
 
-    def get_tree_index(self, position):
-        """
-        Get indexes of various tree positions:
-        0 - tree end
-        1 - active channel
-        """
-        num = 0
-        skipped = 0
-        drop_down_skip_folder = False
-        drop_down_skip_guild = False
-        drop_down_skip_category = False
-        drop_down_skip_channel = False
-        for num, code in enumerate(self.tree_format):
-            if code == 1000:
-                skipped += 1
-                drop_down_skip_folder = False
-                continue
-            elif code == 1100:
-                skipped += 1
-                drop_down_skip_guild = False
-                continue
-            elif code == 1200:
-                skipped += 1
-                drop_down_skip_category = False
-                continue
-            elif code == 1300:
-                skipped += 1
-                drop_down_skip_channel = False
-                continue
-            elif drop_down_skip_folder or drop_down_skip_guild or drop_down_skip_category or drop_down_skip_channel:
-                skipped += 1
-                continue
-            first_digit = code % 10
-            if first_digit == 0 and code < 100:
-                drop_down_skip_folder = True
-            elif first_digit == 0 and code < 200:
-                drop_down_skip_guild = True
-            elif first_digit == 0 and code < 300:
-                drop_down_skip_category = True
-            elif first_digit == 0 and 500 <= code <= 599:
-                drop_down_skip_channel = True
-            if position and (code % 100) // 10 in (4, 5):   # active channels
-                return num - skipped
-        return num - skipped
-
-
-    def tree_select_active(self):
-        """Move tree selection to active channel"""
-        active_channel_index = self.get_tree_index(1)
-        self.tree_selected = active_channel_index
-        self.tree_index = max(self.tree_selected - self.tree_hw[0] + 3, 0)
-        self.draw_tree()
-
-
-    def tree_select(self, tree_pos):
-        """Select specific item in tree by its index"""
-        if tree_pos is None:
+    def iter_visible_tree_entries(self):
+        """Yield visible tree entries as (absolute_index, format_code, visible_index)."""
+        if not hasattr(self, "tree_format"):
             return
         skipped = 0
         drop_down_skip_folder = False
@@ -1754,21 +1800,23 @@ class TUI():
                 skipped += 1
                 drop_down_skip_folder = False
                 continue
-            elif code == 1100:
+            if code == 1100:
                 skipped += 1
                 drop_down_skip_guild = False
                 continue
-            elif code == 1200:
+            if code == 1200:
                 skipped += 1
                 drop_down_skip_category = False
                 continue
-            elif code == 1300:
+            if code == 1300:
                 skipped += 1
                 drop_down_skip_channel = False
                 continue
-            elif drop_down_skip_folder or drop_down_skip_guild or drop_down_skip_category or drop_down_skip_channel:
+            if drop_down_skip_folder or drop_down_skip_guild or drop_down_skip_category or drop_down_skip_channel:
                 skipped += 1
                 continue
+            visible_index = num - skipped
+            yield num, code, visible_index
             first_digit = code % 10
             if first_digit == 0 and code < 100:
                 drop_down_skip_folder = True
@@ -1778,8 +1826,60 @@ class TUI():
                 drop_down_skip_category = True
             elif first_digit == 0 and 500 <= code <= 599:
                 drop_down_skip_channel = True
+
+
+    def get_tree_index(self, position):
+        """
+        Get indexes of various tree positions:
+        0 - tree end
+        1 - active channel
+        """
+        last_visible_index = -1
+        for _, code, visible_index in self.iter_visible_tree_entries():
+            last_visible_index = visible_index
+            if position and (code % 100) // 10 in (4, 5):   # active channels
+                return visible_index
+        return last_visible_index
+
+
+    def tree_select_active(self):
+        """Move tree selection to active channel"""
+        active_channel_index = self.get_tree_index(1)
+        self.tree_selected = active_channel_index
+        self.tree_index = max(self.tree_selected - self.tree_hw[0] + 3, 0)
+        self.draw_tree()
+
+
+    def get_tree_server_pos(self, server_num):
+        """Return absolute tree index for the Nth visible server entry (1-based)."""
+        if server_num < 1:
+            return None
+        visible_servers = 0
+        for num, code, _ in self.iter_visible_tree_entries():
+            if 100 <= code <= 199:
+                visible_servers += 1
+                if visible_servers == server_num:
+                    return num
+        return None
+
+
+    def focus_tree_server(self, server_num):
+        """Focus tree and hover the Nth visible server entry."""
+        self.focus_tree_section()
+        tree_pos = self.get_tree_server_pos(server_num)
+        if tree_pos is None:
+            return False
+        self.tree_select(tree_pos)
+        return True
+
+
+    def tree_select(self, tree_pos):
+        """Select specific item in tree by its index"""
+        if tree_pos is None:
+            return
+        for num, _, visible_index in self.iter_visible_tree_entries():
             if num == tree_pos:
-                self.tree_selected = num - skipped
+                self.tree_selected = visible_index
                 self.tree_index = max(self.tree_selected - self.tree_hw[0] + 3, 0)
                 break
         if not self.disable_drawing:
@@ -2286,14 +2386,7 @@ class TUI():
                     self.init_chat()
                     self.draw_chat(norefresh=True)
                     if self.member_list and self.bordered:   # have to redraw member list borders
-                        h, w = self.screen.getmaxyx()
-                        member_list_hwyx = (
-                            h - (2 + bool(self.win_extra_line)) - self.have_title - 2*self.bordered,
-                            self.member_list_width - self.bordered,
-                             self.bordered or self.have_title,
-                            w - self.member_list_width,
-                        )
-                        self.draw_border(member_list_hwyx, top=not(self.have_title), section="member")
+                        self.redraw_member_list_border()
                     self.draw_member_list(self.member_list, self.member_list_format, force=True)
                     if self.bordered:
                         self.draw_status_line()
@@ -2322,14 +2415,7 @@ class TUI():
                 self.chat_hw = self.win_chat.getmaxyx()
                 self.draw_chat()
                 if self.member_list and self.bordered:   # have to redraw member list borders
-                    h, w = self.screen.getmaxyx()
-                    member_list_hwyx = (
-                        h - (2 + bool(self.win_extra_line)) - self.have_title - 2*self.bordered,
-                        self.member_list_width - self.bordered,
-                         self.bordered or self.have_title,
-                        w - self.member_list_width,
-                    )
-                    self.draw_border(member_list_hwyx, top=not(self.have_title), section="member")
+                    self.redraw_member_list_border()
                 if self.bordered:
                     self.draw_status_line()
                 self.draw_member_list(self.member_list, self.member_list_format, force=True)
@@ -2420,14 +2506,7 @@ class TUI():
                 if not self.member_list:
                     self.draw_chat()
                 elif self.bordered:   # have to redraw member list borders
-                    h, w = self.screen.getmaxyx()
-                    member_list_hwyx = (
-                        h - (2 + bool(self.win_extra_line)) - self.have_title - 2*self.bordered,
-                        self.member_list_width - self.bordered,
-                         self.bordered or self.have_title,
-                        w - self.member_list_width,
-                    )
-                    self.draw_border(member_list_hwyx, top=not(self.have_title), section="member")
+                    self.redraw_member_list_border()
                 if self.bordered:
                     self.draw_status_line()
                 self.draw_extra_line(self.extra_line_text)
@@ -2458,12 +2537,7 @@ class TUI():
                     # self.draw_chat()   # chat will be regenerated and resized in app main loop
 
                     # init member list
-                    member_list_hwyx = (
-                        common_h,
-                        self.member_list_width - self.bordered,
-                        self.bordered or self.have_title,
-                        w - self.member_list_width,
-                    )
+                    member_list_hwyx = self.get_member_list_hwyx(h, w)
                     self.win_member_list = self.screen.derwin(*member_list_hwyx)
                     if self.bordered:
                         self.draw_border(member_list_hwyx, section="member")
@@ -3145,6 +3219,11 @@ class TUI():
                 continue
             w = self.input_hw[1]
 
+            ctrl_num = parse_ctrl_num_key(key)
+            if ctrl_num is not None:
+                self.focus_tree_server(ctrl_num)
+                continue
+
             if key == 27 and not press:   # ESCAPE
                 # terminal waits when Esc is pressed, but not when sending escape sequence
                 self.screen.nodelay(True)
@@ -3182,7 +3261,12 @@ class TUI():
                     self.spellcheck()
                     self.draw_input_line()
                     continue
-                elif sequence[-1] == -1 and sequence[-2] == 27:
+                else:
+                    ctrl_num = parse_ctrl_num_escape(sequence)
+                    if ctrl_num is not None:
+                        self.focus_tree_server(ctrl_num)
+                        continue
+                if sequence[-1] == -1 and sequence[-2] == 27:
                     # holding escape key
                     if self.assist_start:
                         self.assist_start = -1

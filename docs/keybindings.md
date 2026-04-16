@@ -64,6 +64,7 @@
 - `Alt+M` - Toggle member list
 - `Ctrl+T` - Toggle channel tabbed (pinned) state
 - `Alt+NUM`- Switch to tab, `NUM` is 1-9 in number row, not numeric keypad!
+- `Ctrl+1-9` - Focus the server list and hover the Nth visible server entry
 - `Alt+E` - Open external editor to type message in it
 - `Ctrl+K` - Open command palette and type `goto ` and show recent channels
 - `Alt+Left/Right` - Switch tabs incrementally (next/previous)
