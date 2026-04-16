@@ -227,9 +227,9 @@ Note: always put string in `""`. To use `"` inside the string escape it like thi
     Formatting for single reaction string. Reactions string is assembled by joining these strings with `reactions_separator` in between. See [format_one_reaction](#format_one_reaction) for more info.
 - `format_timestamp = "%H:%M"`  
     Format for timestamps in messages. Same as [datetime format codes](https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes)
-- `format_status_line_l = " %global_name (%username) - %status %afk %unreads %action %typing"`  
+- `format_status_line_l = " %global_name (%username) %afk %unreads %action %typing"`  
     Formatting for left side of status line. See [format_status](#format_status) for more info. Set to None to disable.
-- `format_status_line_r = "%vim_mode %slowmode"`  
+- `format_status_line_r = "%slowmode"`  
     Formatting for right side of status line. See [format_status](#format_status) for more info.
 - `format_title_line_l = " %server: %channel"`  
     Formatting for left side of title line. See [format_status](#format_status) for more info. Set to None to disable.
