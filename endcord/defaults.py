@@ -274,6 +274,7 @@ vim_mode_bindings = {
     "insert_mode": "i",
     "append_mode": "a",
     "focus_tree": 11,   # Ctrl+K
+    "focus_history": 14,   # Ctrl+N
     # tree
     "tree_up": "K",
     "tree_down": "J",

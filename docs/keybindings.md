@@ -136,7 +136,7 @@ Switch tab keybinding is special - `NUM` is placeholder for 1-9 number keys, eg.
 ### Configuring vim mode keybindings
 Keybindings for vim mode are configured in section `[vim_mode_bindings]` can be typed as characters but they must be in "". Eg.: `"edit" = "e"`.  
 Alternatively key codes can be used too. When specifying chained or multiple bindings, key codes must be used!   
-There are 3 special keybindings, used only in vim mode: `"insert_mode" = "i"`, `"append_mode" = "a"`, and `"focus_tree" = 11` (`Ctrl+K`). `Ctrl+J` focus-to-chat is handled specially in terminal mode because it shares a keycode with Enter.  
+There are 4 special keybindings, used only in vim mode: `"insert_mode" = "i"`, `"append_mode" = "a"`, `"focus_tree" = 11` (`Ctrl+K`), and `"focus_history" = 14` (`Ctrl+N`). `Ctrl+J` focus-to-chat is handled specially in terminal mode because it shares a keycode with Enter.  
 Command bindings can also use vim mode bindings, but they must be typed as key codes in quotes!
 
 ### Command keybinding (macros)
@@ -149,10 +149,11 @@ Special commands available only for command-bindings are documented in [Commands
 
 
 ## Vim mode keybindings
-- `i` - Enter insert mode
+- `i` - Enter insert mode (also returns from chat history focus back to the prompt)
 - `a` - Enter insert mode one character to the right (append)
 - `Ctrl+K` - Move focus to the previous visible pane (carousel)
 - `Ctrl+J` - Move focus to the next visible pane (carousel)
+- `Ctrl+N` - Focus the visible bottom line in chat history
 - `Enter` - Select/open the focused conversation in the tree pane
 
 ### tree
@@ -173,7 +174,7 @@ Special commands available only for command-bindings are documented in [Commands
 - `C` - change to end of prompt line
 - `Ctrl+h/l` - select left/right
 - `H/L` - select word left/right
-- `Ctrl+N` - Insert newline in input line (warning `Shift+Enter` doesn't work in terminals)
+- `Ctrl+N` - Focus chat history in normal mode, insert newline in insert mode
 - `u` - Undo
 - `Ctrl+R` - Redo
 - `Alt+A` - Select all
@@ -183,7 +184,7 @@ Special commands available only for command-bindings are documented in [Commands
 
 ### chat
 - `Enter` - Send message
-- `k/j` - Navigating messages
+- `Ctrl+N` then `k/j` - Navigate chat history without returning to the prompt on the newest line
 - `r` - Reply to selected message
 - `e` - Edit selected message
 - `d` - Delete selected message

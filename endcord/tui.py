@@ -328,6 +328,7 @@ class TUI():
         self.KEYBINDINGS_CHAT_DOWN = self.keybindings["chat_down"]
         self.KEYBINDINGS_INPUT_LEFT = self.keybindings["input_left"]
         self.KEYBINDINGS_INPUT_RIGHT = self.keybindings["input_right"]
+        self.KEYBINDINGS_FOCUS_HISTORY = self.keybindings.get("focus_history", ())
 
         # initial values
         self.disable_drawing = False
@@ -834,10 +835,50 @@ class TUI():
             self.redraw_borders()
 
 
-    def focus_main_section(self):
-        """Focus the main chat/input section."""
+    def is_chat_history_focused(self):
+        """Return True when vim normal mode focus is on the chat history selection."""
+        return self.vim_mode and not self.insert_mode and self.active_section == "main" and self.chat_selected != -1
+
+
+    def focus_prompt_line(self):
+        """Focus the prompt input line and hide any active chat-history selection."""
+        self.pending_prompt_action = None
+        redraw_chat = self.chat_selected != -1
+        self.chat_selected = -1
         self.set_active_section("main")
+        if redraw_chat and not self.disable_drawing:
+            self.draw_chat()
         self.show_cursor()
+        if not self.disable_drawing:
+            self.draw_input_line()
+        else:
+            self.need_update.set()
+
+
+    def focus_chat_history(self, keep_position=False):
+        """Focus chat history, optionally preserving the existing selected line."""
+        if not self.chat_buffer:
+            return False
+        self.pending_prompt_action = None
+        self.set_active_section("main")
+        if keep_position and self.chat_selected != -1:
+            self.chat_selected = min(max(self.chat_selected, 0), len(self.chat_buffer) - 1)
+        else:
+            self.chat_selected = min(max(self.chat_index, 0), len(self.chat_buffer) - 1)
+        if not self.disable_drawing:
+            self.draw_chat()
+            self.draw_input_line()
+        else:
+            self.need_update.set()
+        return True
+
+
+    def focus_main_section(self):
+        """Focus the main chat/input section, restoring history focus when active."""
+        if self.vim_mode and not self.insert_mode and self.chat_selected != -1:
+            self.focus_chat_history(keep_position=True)
+        else:
+            self.focus_prompt_line()
 
 
     def focus_tree_section(self):
@@ -1122,6 +1163,8 @@ class TUI():
 
     def draw_cursor_cell(self, color_id, line_text=None):
         """Draw cursor at current position using current vim-mode cursor glyph."""
+        if self.is_chat_history_focused():
+            return False
         width = self.input_hw[1]
         if self.cursor_pos >= width:
             return False
@@ -1147,6 +1190,7 @@ class TUI():
         return (
             self.vim_mode and
             self.insert_mode and
+            not self.is_chat_history_focused() and
             not uses_pgcurses and
             not self.disable_drawing and
             self.win_input_line is not None
@@ -1391,7 +1435,7 @@ class TUI():
 
     def handle_vim_prompt_key(self, key):
         """Handle vim-style prompt motions/operators in normal mode."""
-        if not (self.vim_mode and not self.insert_mode and self.active_section == "main"):
+        if not (self.vim_mode and not self.insert_mode and self.active_section == "main" and not self.is_chat_history_focused()):
             self.pending_prompt_action = None
             return None
         if not isinstance(key, int):
@@ -1462,8 +1506,11 @@ class TUI():
         """Set insert mode for vim mode."""
         if self.vim_mode:
             was_insert_mode = self.insert_mode
+            redraw_chat = bool(value and self.chat_selected != -1)
             self.pending_prompt_action = None
             self.insert_mode = value
+            if value:
+                self.chat_selected = -1
             if value and append:
                 self.input_index = min(self.input_index + 1, len(self.input_buffer))
             elif was_insert_mode and not value and self.input_buffer and self.input_index > 0:
@@ -1475,6 +1522,8 @@ class TUI():
             if not value:
                 self.sync_terminal_cursor()
             if not self.disable_drawing:
+                if redraw_chat:
+                    self.draw_chat()
                 self.draw_input_line()
             else:
                 self.need_update.set()
@@ -2875,6 +2924,8 @@ class TUI():
             self.set_active_section("main")
             if command:
                 return 46
+            if self.vim_mode and not self.insert_mode and self.chat_selected == -1:
+                return None
             if self.chat_selected + 1 < len(self.chat_buffer):
                 top_line = self.chat_index + self.chat_hw[0] - 1
                 if top_line + 1 < len(self.chat_buffer) and self.chat_selected >= top_line:
@@ -2886,7 +2937,11 @@ class TUI():
             self.set_active_section("main")
             if command:
                 return 47
+            if self.vim_mode and not self.insert_mode and self.chat_selected == -1:
+                return None
             if self.chat_selected >= self.dont_hide_chat_selection:   # if it is -1, selection is hidden
+                if self.vim_mode and not self.insert_mode and self.chat_selected == 0:
+                    return None
                 if self.chat_index and self.chat_selected <= self.chat_index:
                     self.chat_index -= 1   # move history up
                 self.chat_selected -= 1   # move selection down
@@ -3142,6 +3197,10 @@ class TUI():
                 code = self.common_keybindings(self.keybindings["tree_select"][0], command=command, forum=forum)
                 if code is not None:
                     return self.return_input_code(code)
+                continue
+
+            elif self.vim_mode and not self.insert_mode and not command and key in self.KEYBINDINGS_FOCUS_HISTORY:
+                self.focus_chat_history()
                 continue
 
             elif self.handle_vim_focus_switch(key, command=command):
@@ -3468,7 +3527,7 @@ class TUI():
             elif key in self.keybindings["attach_next"]:
                 return self.return_input_code(15)
 
-            elif key in self.keybindings["insert_newline"]:
+            elif key in self.keybindings["insert_newline"] and (self.insert_mode or not self.vim_mode):
                 self.input_buffer = self.input_buffer[:self.input_index] + "\n" + self.input_buffer[self.input_index:]
                 self.input_index += 1
                 self.show_cursor()
@@ -3657,9 +3716,12 @@ class TUI():
 
         if self.mouse_in_window(x, y, self.win_chat):
             self.set_active_section("main")
+            self.pending_prompt_action = None
             x, y = self.mouse_rel_pos(x, y, self.win_chat)
             self.chat_selected = self.chat_index + self.win_chat.getmaxyx()[0] - y - 1
             self.draw_chat()
+            if self.vim_mode and not self.insert_mode:
+                self.draw_input_line()
 
         elif self.win_member_list and self.mouse_in_window(x, y, self.win_member_list):
             self.set_active_section("member")
@@ -3668,6 +3730,10 @@ class TUI():
             self.draw_member_list(self.member_list, self.member_list_format)
 
         elif self.mouse_in_window(x, y, self.win_input_line):
+            self.pending_prompt_action = None
+            if self.vim_mode and not self.insert_mode and self.chat_selected != -1:
+                self.chat_selected = -1
+                self.draw_chat()
             self.set_active_section("main")
             x, y = self.mouse_rel_pos(x, y, self.win_input_line)
             input_index = min(x + max(0, len(self.input_buffer) - self.input_hw[1] + 1 - self.input_line_index), len(self.input_buffer))
