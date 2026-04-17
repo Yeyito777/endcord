@@ -3,15 +3,18 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, version 3.
 
-"""Archived mention-helper and slash-command compose implementation.
+"""Archived compose-time assist implementations.
 
-This preserves the legacy @mention/@role helper and /slash-command parsing/search
-while those compose-time entry points are deprecated in the live client.
+This preserves the legacy #channel, @mention/@role, :emoji, and ;sticker;
+helper searches plus the old slash/app-command compose parser/search while
+those entry points are deprecated in the live client.
 """
 
 import heapq
 import importlib.util
 import re
+
+import emoji
 
 LEGACY_ASSIST_TRIGGERS = ("#", "@", ":", ";")
 LEGACY_APP_COMMAND_ASSIST_TRIGGER = "/"
@@ -266,6 +269,34 @@ def app_command_string(text, my_commands, guild_commands, permitted_guild_comman
     }
     return command_data, app_id, need_attachment
 
+def search_channels_guild(channels, query, limit=50, score_cutoff=15):
+    """Search channels for the archived #channel compose helper."""
+    results = []
+    worst_score = score_cutoff
+
+    for channel in channels:
+        if channel["permitted"] and channel["type"] != 4:
+            formatted = channel["name"]
+            if channel["type"] == 2:
+                formatted += " - voice"
+            elif channel["type"] in (11, 12):
+                formatted += " - thread"
+            elif channel["type"] == 15:
+                formatted += " - forum"
+            elif channel["type"] == 16:
+                formatted += " - imageboard"
+
+            score = fuzzy_match_score(query, formatted)
+            if score < worst_score:
+                continue
+            heapq.heappush(results, (formatted, channel["id"], score))
+            if len(results) > limit:
+                heapq.heappop(results)
+                worst_score = results[0][2]
+
+    return sorted(results, key=lambda x: x[2], reverse=True)
+
+
 def search_usernames_roles(roles, query_results, guild_id, gateway, query, presences=[], limit=50, score_cutoff=15):
     """Search for usernames and roles"""
     results = []
@@ -311,6 +342,83 @@ def search_usernames_roles(roles, query_results, guild_id, gateway, query, prese
         )
 
     return sorted(results, key=lambda x: x[2], reverse=True)
+
+
+def search_emojis(all_emojis, premium, guild_id, query, safe_emoji=False, limit=50, score_cutoff=15):
+    """Search emoji for the archived compose-time emoji assist."""
+    results = []
+    worst_score = score_cutoff
+
+    if premium:
+        emojis = all_emojis
+    else:
+        for guild in all_emojis:
+            if guild["guild_id"] == guild_id:
+                emojis = [guild]
+                break
+        else:
+            emojis = []
+
+    for guild in emojis:
+        guild_name = guild["guild_name"]
+        for guild_emoji in guild["emojis"]:
+            formatted = f"{guild_emoji["name"]} ({guild_name})"
+            score = fuzzy_match_score(query, formatted)
+            if score < worst_score:
+                continue
+            heapq.heappush(results, (formatted, f"<:{guild_emoji["name"]}:{guild_emoji["id"]}>", score))
+            if len(results) > limit:
+                heapq.heappop(results)
+                worst_score = results[0][2]
+
+    if len(results) < limit:
+        for key, item in emoji.EMOJI_DATA.items():
+            if item["status"] > 2:
+                continue
+            if safe_emoji:
+                formatted = item["en"]
+            else:
+                formatted = f"{item["en"]} - {key}"
+            score = fuzzy_match_score(query, formatted)
+            if score < worst_score:
+                continue
+            heapq.heappush(results, (formatted, item["en"], score))
+            if len(results) > limit:
+                heapq.heappop(results)
+                worst_score = results[0][2]
+
+    return sorted(results, key=lambda x: x[2], reverse=True)
+
+
+def search_stickers(all_stickers, default_stickers, premium, guild_id, query, limit=50, score_cutoff=15):
+    """Search stickers for the archived ;sticker; compose helper."""
+    results = []
+    worst_score = score_cutoff
+
+    if premium:
+        stickers = all_stickers
+    else:
+        for pack in all_stickers:
+            if pack["pack_id"] == guild_id:
+                stickers = [pack]
+                break
+        else:
+            stickers = []
+
+    for pack in stickers + default_stickers:
+        pack_name = pack["pack_name"]
+        for sticker in pack["stickers"]:
+            formatted = f"{sticker["name"]} ({pack_name})"
+            score = fuzzy_match_score(query, formatted)
+            if score < worst_score:
+                continue
+            heapq.heappush(results, (formatted, sticker["id"], score))
+            if len(results) > limit:
+                heapq.heappop(results)
+                worst_score = results[0][2]
+
+    return sorted(results, key=lambda x: x[2], reverse=True)
+
 
 def search_app_commands(guild_apps, guild_commands, my_apps, my_commands, depth, guild_commands_permitted, dm, assist_skip_app_command, match_command_arguments, query, limit=50, score_cutoff=15):
     """Search for app commands"""

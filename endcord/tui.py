@@ -20,7 +20,7 @@ INPUT_LINE_JUMP = 20   # jump size when moving input line
 MAX_DELTA_STORE = 50   # limit undo size
 MIN_ASSIST_LETTERS = 2
 ASSIST_TRIGGERS = ("#", "@", ":", ";")
-DEPRECATED_ASSIST_TYPES = (2,)
+DEPRECATED_ASSIST_TYPES = (1, 2, 3, 4)
 if sys.platform == "win32" or os.environ.get("REALTERM", "") == "xterm":   # envvar set in main.py
     BACKSPACE = 8   # i cant believe this
     # ctrl+backspace is 263 (curses.KEY_BACKSPACE)
@@ -1016,10 +1016,10 @@ class TUI():
         """
         Return word to be assisted with completing and type of assist needed
         Assist types:
-        1 - channel
+        1 - channel (deprecated)
         2 - username/role (deprecated)
-        3 - emoji
-        4 - sticker
+        3 - emoji (deprecated)
+        4 - sticker (deprecated)
         5 - client command
         6 - app command (deprecated)
         7 - upload file select

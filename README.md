@@ -187,19 +187,16 @@ Extra window is drawn for viewing:
 - Pinned messages (`Alt+N`),  `Alt+Enter` or enter with no typed text will jump to selected message.  
 `Alt+Enter` in member list will show user profile of the selected member.  
 
-### Assist with channels, emoji, sticker, slash commands
-Assist triggers are (the first character): `#channel`, `:emoji:`, `;sticker;`, and prompt-local `/command`.  
-The legacy `@mention` / `@role` helper is deprecated and currently disabled.  
-Press `Esc` to stop assist. Re-type trigger to start it again.  
-Navigation: `Alt+Up/Down` - Go up/down, `Alt+Enter` or `Enter` - insert selected item.  
-When inserted in input line, item will usually be shown as `<some_numbers>` - that is intended - do not alter it.  
-Stickers and emoji are sorted into packs, and will be shown as `pack name - emoji/sticker name`, and search is performed on that string.  
+### Assist with slash commands
+Prompt-local `/command` is the remaining compose-time assist entrypoint.  
+The legacy `#channel`, `@mention` / `@role`, `:emoji`, `;sticker;`, and slash/app-command compose helpers are deprecated and currently disabled.  
+Press `Esc` to stop assist. Re-type `/` to start it again.  
+Navigation: `Tab` / `Shift+Tab` cycle suggestions; command-popup navigation keys and `Enter` can also be used.  
 Slash commands are typed directly in the main prompt; use `/help` to browse them.  
-Sticker will also be added to message text and removed when sending.  
 
 ### Adding/Removing reactions
 To start reaction assist, press `Alt+E`.  
-Then type emoji name prepended with `:`, just like with regular assist then enter.  
+Then type an emoji name prefixed with `:` and press enter.  
 If reaction is already present it will be +1. Reaction is removed if current account already reacted (reactions are toggled).  
 To add/remove one of already present reactions, only type its index (starts from 1).  
 If this account reacted to the message, that reaction will have `*` prepended to reaction count.  
@@ -217,8 +214,8 @@ The legacy slash/app-command compose implementation is deprecated and currently 
 Archived implementation details live in `endcord/deprecated/input_assist.py`.  
 
 ### Emoji
-To add default emoji in message just type its name or alias, like this: `:thumbs_up:`  
-For now, there is no emoji assist, but it is planned.  
+To add default emoji in a message just type its name or alias, like this: `:thumbs_up:`. Endcord still expands `:emoji_name:` / `:alias:` when sending.  
+The old compose-time `:emoji` suggestion popup is deprecated and currently disabled.  
 Emoji names can be found [here](https://unicode.org/emoji/charts/full-emoji-list.html) and aliases [here](https://www.webfx.com/tools/emoji-cheat-sheet/).  
 
 # s/ replacements with regex

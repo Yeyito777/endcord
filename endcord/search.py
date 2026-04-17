@@ -7,10 +7,11 @@ import heapq
 import importlib.util
 import re
 
-import emoji
-
 from endcord.deprecated.input_assist import (
     search_app_commands as deprecated_search_app_commands,
+    search_channels_guild as deprecated_search_channels_guild,
+    search_emojis as deprecated_search_emojis,
+    search_stickers as deprecated_search_stickers,
     search_usernames_roles as deprecated_search_usernames_roles,
 )
 
@@ -84,32 +85,8 @@ def search_options(options, query, prompt, limit=50, score_cutoff=15):
 
 
 def search_channels_guild(channels, query, limit=50, score_cutoff=15):
-    """Search for channels in one guild"""
-    results = []
-    worst_score = score_cutoff
-
-    for channel in channels:
-        # skip categories (type 4)
-        if channel["permitted"] and channel["type"] != 4:
-            formatted = channel["name"]
-            if channel["type"] == 2:
-                formatted += " - voice"
-            elif channel["type"] in (11, 12):
-                formatted += " - thread"
-            elif channel["type"] == 15:
-                formatted += " - forum"
-            elif channel["type"] == 16:
-                formatted += " - imageboard"
-
-            score = fuzzy_match_score(query, formatted)
-            if score < worst_score:
-                continue
-            heapq.heappush(results, (formatted, channel["id"], score))
-            if len(results) > limit:
-                heapq.heappop(results)
-                worst_score = results[0][2]
-
-    return sorted(results, key=lambda x: x[2], reverse=True)
+    """Compatibility wrapper for the deprecated #channel compose assist search."""
+    return deprecated_search_channels_guild(channels, query, limit, score_cutoff)
 
 
 def search_channels_all(guilds, dms, query, full_input, recent=None, read_state=None, limit=50, score_cutoff=15):
@@ -211,83 +188,13 @@ def search_usernames_roles(roles, query_results, guild_id, gateway, query, prese
 
 
 def search_emojis(all_emojis, premium, guild_id, query, safe_emoji=False, limit=50, score_cutoff=15):
-    """Search for emoji"""
-    results = []
-    worst_score = score_cutoff
-
-    # guild emoji
-    if premium:
-        emojis = all_emojis
-    else:
-        for guild in all_emojis:
-            if guild["guild_id"] == guild_id:
-                emojis = [guild]
-                break
-        else:
-            emojis = []
-
-    for guild in emojis:
-        guild_name = guild["guild_name"]
-        for guild_emoji in guild["emojis"]:
-            formatted = f"{guild_emoji["name"]} ({guild_name})"
-            score = fuzzy_match_score(query, formatted)
-            if score < worst_score:
-                continue
-            heapq.heappush(results, (formatted, f"<:{guild_emoji["name"]}:{guild_emoji["id"]}>", score))
-            if len(results) > limit:
-                heapq.heappop(results)
-                worst_score = results[0][2]
-
-    # standard emoji
-    if len(results) < limit:
-        for key, item in emoji.EMOJI_DATA.items():
-            if item["status"] > 2:   # skip unqualified and minimally qualified emoji
-                continue
-            # emoji.EMOJI_DATA = {emoji: {"en": ":emoji_name:", "status": 2, "E": 3}...}
-            # using only qualified emojis (status: 2)
-            if safe_emoji:
-                formatted = item["en"]
-            else:
-                formatted = f"{item["en"]} - {key}"
-            score = fuzzy_match_score(query, formatted)
-            if score < worst_score:
-                continue
-            heapq.heappush(results, (formatted, item["en"], score))
-            if len(results) > limit:
-                heapq.heappop(results)
-                worst_score = results[0][2]
-
-    return sorted(results, key=lambda x: x[2], reverse=True)
+    """Compatibility wrapper for the deprecated emoji assist search."""
+    return deprecated_search_emojis(all_emojis, premium, guild_id, query, safe_emoji, limit, score_cutoff)
 
 
 def search_stickers(all_stickers, default_stickers, premium, guild_id, query, limit=50, score_cutoff=15):
-    """Search for stickers"""
-    results = []
-    worst_score = score_cutoff
-
-    if premium:
-        stickers = all_stickers
-    else:
-        for pack in all_stickers:
-            if pack["pack_id"] == guild_id:
-                stickers = [pack]
-                break
-        else:
-            stickers = []
-
-    for pack in stickers + default_stickers:
-        pack_name = pack["pack_name"]
-        for sticker in pack["stickers"]:
-            formatted = f"{sticker["name"]} ({pack_name})"
-            score = fuzzy_match_score(query, formatted)
-            if score < worst_score:
-                continue
-            heapq.heappush(results, (formatted, sticker["id"], score))
-            if len(results) > limit:
-                heapq.heappop(results)
-                worst_score = results[0][2]
-
-    return sorted(results, key=lambda x: x[2], reverse=True)
+    """Compatibility wrapper for the deprecated sticker assist search."""
+    return deprecated_search_stickers(all_stickers, default_stickers, premium, guild_id, query, limit, score_cutoff)
 
 
 def search_settings(config, query, limit=50, score_cutoff=15):

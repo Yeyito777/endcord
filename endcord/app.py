@@ -5619,8 +5619,8 @@ class Endcord:
 
 
     def assist(self, assist_word, assist_type, query_results=None):
-        """Assist when typing: channel, emoji, sticker, and other live prompt helpers."""
-        if assist_type in (2, 6):
+        """Assist when typing: slash, file paths, and other live prompt helpers."""
+        if assist_type in (1, 2, 3, 4, 6):
             self.stop_assist()
             self.assist_type = None
             self.assist_found = []
@@ -5629,25 +5629,7 @@ class Endcord:
         self.assist_type = assist_type
         self.assist_found = []
 
-        if assist_type == 1:   # channels
-            if not self.command:   # current guild channels
-                self.assist_found = search.search_channels_guild(
-                    self.current_channels,
-                    assist_word,
-                    limit=self.assist_limit,
-                    score_cutoff=self.assist_score_cutoff,
-                )
-            else:   # all guilds, channels, and dms
-                self.assist_found = search.search_channels_all(
-                    self.guilds,
-                    self.dms,
-                    assist_word,
-                    self.tui.input_buffer,
-                    limit=self.assist_limit,
-                    score_cutoff=self.assist_score_cutoff,
-                )
-
-        elif assist_type == 2:   # username/role
+        if assist_type == 2:   # username/role
             self.assist_found = search.search_usernames_roles(
                 self.current_roles,
                 query_results,
@@ -5655,32 +5637,6 @@ class Endcord:
                 self.gateway,
                 assist_word,
                 presences=self.current_subscribed_members,
-                limit=self.assist_limit,
-                score_cutoff=self.assist_score_cutoff,
-            )
-
-        elif assist_type == 3:   # emoji
-            self.assist_found = search.search_emojis(
-                self.gateway.get_emojis(),
-                self.premium,
-                self.active_channel["guild_id"],
-                assist_word,
-                safe_emoji=self.emoji_as_text,
-                limit=self.assist_limit,
-                score_cutoff=self.assist_score_cutoff,
-            )
-
-        elif assist_type == 4:   # sticker
-            if self.config["default_stickers"]:
-                default_stickers = self.discord.get_stickers()
-            else:
-                default_stickers = []
-            self.assist_found = search.search_stickers(
-                self.gateway.get_stickers(),
-                default_stickers,
-                self.premium,
-                self.active_channel["guild_id"],
-                assist_word,
                 limit=self.assist_limit,
                 score_cutoff=self.assist_score_cutoff,
             )
@@ -5885,23 +5841,15 @@ class Endcord:
 
     def insert_assist(self, input_text, index, start, end):
         """Insert specified assist to specified position in the text"""
-        if self.assist_type in (2, 6):
+        if self.assist_type in (1, 2, 3, 4, 6):
             self.stop_assist()
             return input_text, len(input_text)
         if index >= len(self.assist_found) or index < 0:
             return None, None
-        if self.assist_type == 1:   # channel
-            insert_string = f"<#{self.assist_found[index][1]}>"   # format: "<#ID>"
-        elif self.assist_type == 2:   # username/role
+        if self.assist_type == 2:   # username/role
             # username format: "<@ID>"
             # role format: "<@&ID>" - already has "&" in ID
             insert_string = f"<@{self.assist_found[index][1]}>"
-        elif self.assist_type == 3:   # emoji
-            # default emoji - :emoji_name:
-            # discord emoji format: "<:name:ID>"
-            insert_string = self.assist_found[index][1]
-        elif self.assist_type == 4:   # sticker
-            insert_string = f"<;{self.assist_found[index][1]};>"   # format: "<;ID;>"
         elif self.assist_type == 5:   # command
             if self.assist_found[index][1]:
                 if input_text.endswith(" ") and input_text not in ("set ", "string_select ", "set_notifications ", "game_detection_blacklist ", "switch_tab ", "goto "):
