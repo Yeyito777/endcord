@@ -2026,6 +2026,46 @@ class TUI():
             self.draw_tree()
 
 
+    def move_tree_selection(self, step, allow_wrap=None):
+        """Move the visible tree selection by one row without preemptive scrolling."""
+        if step == 0 or self.tree_clean_len <= 0:
+            return False
+        if allow_wrap is None:
+            allow_wrap = self.wrap_around
+        self.focus_tree_section()
+
+        moved = False
+        if step < 0:
+            if self.tree_selected > 0:
+                self.tree_selected -= 1
+                if self.tree_selected < self.tree_index:
+                    self.tree_index = self.tree_selected
+                moved = True
+            elif self.tree_selected < 0 and allow_wrap:
+                self.tree_selected = self.get_tree_index(0)
+                self.tree_index = max(self.tree_selected - (self.tree_hw[0] - 1), 0)
+                moved = True
+            elif self.tree_selected == 0 and allow_wrap:
+                self.tree_selected = self.get_tree_index(0)
+                self.tree_index = max(self.tree_selected - (self.tree_hw[0] - 1), 0)
+                moved = True
+        else:
+            if self.tree_selected + 1 < self.tree_clean_len:
+                self.tree_selected += 1
+                bottom_visible = self.tree_index + self.tree_hw[0] - 1
+                if self.tree_selected > bottom_visible:
+                    self.tree_index = self.tree_selected - self.tree_hw[0] + 1
+                moved = True
+            elif allow_wrap:
+                self.tree_selected = 0
+                self.tree_index = 0
+                moved = True
+
+        if moved and not self.disable_drawing:
+            self.draw_tree()
+        return moved
+
+
     def toggle_category(self, tree_pos, only_open=False):
         """Toggle category drop-down state in tree"""
         if tree_pos >= 0:
@@ -3231,32 +3271,10 @@ class TUI():
                 if key in self.KEYBINDINGS_TREE_SERVER_DOWN:
                     return 80
             if key in self.KEYBINDINGS_CHAT_UP or key in self.keybindings["tree_up"]:
-                self.set_active_section("tree")
-                if self.tree_selected >= 0:
-                    if key in self.KEYBINDINGS_CHAT_UP and self.tree_selected == 0:
-                        return None
-                    if self.tree_index and self.tree_selected <= self.tree_index + 2:
-                        self.tree_index -= 1
-                    self.tree_selected -= 1
-                    self.draw_tree()
-                elif self.wrap_around and key not in self.KEYBINDINGS_CHAT_UP:
-                    tree_end_index = self.get_tree_index(0)
-                    self.tree_selected = tree_end_index
-                    self.tree_index = max(self.tree_selected - (self.tree_hw[0] - 1), 0)
-                    self.draw_tree()
+                self.move_tree_selection(-1, allow_wrap=False)
                 return None
             if key in self.KEYBINDINGS_CHAT_DOWN or key in self.keybindings["tree_down"]:
-                self.set_active_section("tree")
-                if self.tree_selected + 1 < self.tree_clean_len:
-                    top_line = self.tree_index + self.tree_hw[0]
-                    if top_line < self.tree_clean_len and self.tree_selected >= top_line - 3:
-                        self.tree_index += 1
-                    self.tree_selected += 1
-                    self.draw_tree()
-                elif self.wrap_around and key not in self.KEYBINDINGS_CHAT_DOWN:
-                    self.tree_selected = 0
-                    self.tree_index = 0
-                    self.draw_tree()
+                self.move_tree_selection(1, allow_wrap=False)
                 return None
 
         if key in self.KEYBINDINGS_CHAT_UP:
@@ -3290,30 +3308,12 @@ class TUI():
             pass
 
         elif key in self.keybindings["tree_up"]:
-            self.set_active_section("tree")
-            if self.tree_selected >= 0:
-                if self.tree_index and self.tree_selected <= self.tree_index + 2:
-                    self.tree_index -= 1
-                self.tree_selected -= 1
-                self.draw_tree()
-            elif self.wrap_around:
-                tree_end_index = self.get_tree_index(0)
-                self.tree_selected = tree_end_index
-                self.tree_index = max(self.tree_selected - (self.tree_hw[0] - 1), 0)
-                self.draw_tree()
+            allow_wrap = not (self.vim_mode and not self.insert_mode)
+            self.move_tree_selection(-1, allow_wrap=allow_wrap)
 
         elif key in self.keybindings["tree_down"]:
-            self.set_active_section("tree")
-            if self.tree_selected + 1 < self.tree_clean_len:
-                top_line = self.tree_index + self.tree_hw[0]
-                if top_line < self.tree_clean_len and self.tree_selected >= top_line - 3:
-                    self.tree_index += 1
-                self.tree_selected += 1
-                self.draw_tree()
-            elif self.wrap_around:
-                self.tree_selected = 0
-                self.tree_index = 0
-                self.draw_tree()
+            allow_wrap = not (self.vim_mode and not self.insert_mode)
+            self.move_tree_selection(1, allow_wrap=allow_wrap)
 
         elif key in self.keybindings["tree_select"]:
             self.set_active_section("tree")
