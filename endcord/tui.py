@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 
-from endcord import acs, color as color_utils, defaults, peripherals, slash_commands, utils
+from endcord import acs, color as color_utils, command_popup, defaults, peripherals, slash_commands, utils
 
 logger = logging.getLogger(__name__)
 uses_pgcurses = hasattr(curses, "PGCURSES")
@@ -26,6 +26,7 @@ if sys.platform == "win32" or os.environ.get("REALTERM", "") == "xterm":   # env
     # ctrl+backspace is 263 (curses.KEY_BACKSPACE)
 else:
     BACKSPACE = curses.KEY_BACKSPACE
+BACKTAB = getattr(curses, "KEY_BTAB", 353)
 BUTTON4_PRESSED = getattr(curses, "BUTTON4_PRESSED", 0)
 BUTTON5_PRESSED = getattr(curses, "BUTTON5_PRESSED", 0)
 FKEY_BASE = getattr(curses, "KEY_F0", 264)
@@ -131,6 +132,31 @@ def safe_drawch(screen, y, x, character, color):
 
 
 
+def safe_addstr(screen, y, x, text, color, max_width=None):
+    """Safely draw a string without insert-shifting the rest of the line."""
+    if max_width is None:
+        try:
+            max_width = max(0, screen.getmaxyx()[1] - x)
+        except curses.error:
+            return
+    max_width = max(0, max_width)
+    if max_width <= 0 or not text:
+        return
+    text = text[:max_width]
+    try:
+        screen.addnstr(y, x, text, len(text), color)
+        return
+    except (OverflowError, UnicodeEncodeError, AttributeError):
+        pass
+    except curses.error:
+        return
+    for offset, character in enumerate(text):
+        if offset >= max_width:
+            break
+        safe_drawch(screen, y, x + offset, character, color)
+
+
+
 def parse_ctrl_num_key(key):
     """Return Ctrl+digit number from curses function-key remaps, if any."""
     if isinstance(key, int):
@@ -184,6 +210,29 @@ def parse_ctrl_num_escape(sequence):
                 return key_code - 48
 
     return None
+
+
+
+def parse_backtab_escape(sequence):
+    """Return True when an escape sequence represents Shift+Tab."""
+    if not sequence or sequence[:2] != [27, 91]:
+        return False
+    if sequence[-1] == -1:
+        sequence = sequence[:-1]
+    if len(sequence) < 3:
+        return False
+    final = sequence[-1]
+    try:
+        params = "".join(chr(ch) for ch in sequence[2:-1])
+    except ValueError:
+        return False
+    if final == 90 and params == "":
+        return True
+    if final == 117 and params == "9;2":
+        return True
+    if final == 126 and params == "27;2;9":
+        return True
+    return False
 
 
 def select_word(text, index):
@@ -352,8 +401,8 @@ class TUI():
         self.color_id_presence_idle = self.init_pair((208, tree_bg))
         self.color_id_presence_dnd = self.init_pair((196, tree_bg))
         self.color_id_extra_window = self.init_pair(config["color_extra_window"])
-        popup_bg = config["color_extra_window"][1]
-        popup_sel_bg = config["color_extra_line"][1]
+        popup_bg = config.get("color_command_popup", [255, "#030814"])[1]
+        popup_sel_bg = config.get("color_command_popup_selected", [255, "#0f193c"])[1]
         popup_name_fg = config["color_input_line"][0]
         popup_desc_fg = config["color_tree_muted"][0]
         popup_marker_fg = config["color_command"][0]
@@ -485,6 +534,7 @@ class TUI():
         self.command_popup_selected = -1
         self.command_popup_scroll = 0
         self.command_popup_hwyx = None
+        self.command_popup_cycle_prefix = None
         self.mlist_selected = -1
         self.mlist_index = 0
         self.fun = 0
@@ -867,6 +917,61 @@ class TUI():
         return bool(self.command_popup_items)
 
 
+    def clear_command_popup_cycle(self, reset_selection=False):
+        """Forget Tab-cycling restore state for the command popup."""
+        self.command_popup_cycle_prefix = None
+        if reset_selection:
+            self.command_popup_selected = -1
+
+
+    def _set_input_buffer_text(self, text, clear_selection=True):
+        """Replace the prompt text while keeping cursor bookkeeping consistent."""
+        self.input_buffer = text
+        self.input_index = len(text)
+        self.input_line_index = 0
+        if clear_selection:
+            self.input_select_start = None
+
+
+    def restore_command_popup_cycle_prefix(self):
+        """Restore the original text that was present before Tab-cycling."""
+        if self.command_popup_cycle_prefix is None:
+            return False
+        self._set_input_buffer_text(self.command_popup_cycle_prefix, clear_selection=False)
+        self.command_popup_cycle_prefix = None
+        self.command_popup_selected = -1
+        return True
+
+
+    def cycle_command_popup(self, direction):
+        """Cycle slash-command popup selection like Exocortex Tab/Shift+Tab."""
+        if not self.command_popup_items:
+            return False
+        if self.command_popup_cycle_prefix is None:
+            self.command_popup_cycle_prefix = self.input_buffer
+        total = len(self.command_popup_items)
+        if direction > 0:
+            self.command_popup_selected = 0 if self.command_popup_selected < 0 else (self.command_popup_selected + 1) % total
+        else:
+            self.command_popup_selected = total - 1 if self.command_popup_selected <= 0 else self.command_popup_selected - 1
+        new_text = self.command_popup_items[self.command_popup_selected][1]
+        self._set_input_buffer_text(new_text)
+        self.show_cursor()
+        self.spellcheck()
+        self.draw_chat()
+        return True
+
+
+    def get_command_popup_active_index(self):
+        """Return the row that should be highlighted in the command popup."""
+        if self.command_popup_selected >= 0:
+            return self.command_popup_selected
+        for index, item in enumerate(self.command_popup_items):
+            if item[1] == self.input_buffer:
+                return index
+        return -1
+
+
     def get_mlist_selected(self):
         """Return index of selected line in member list"""
         return self.mlist_selected
@@ -941,6 +1046,8 @@ class TUI():
                 return None, 100
             if self.assist_start > self.input_index:
                 return None, 100
+        if self.command_popup_cycle_prefix is not None and self.command_popup_items:
+            return self.command_popup_cycle_prefix, 8
         if slash_commands.is_slash_command_text(self.input_buffer) and (not self.vim_mode or self.insert_mode):
             return self.input_buffer, 8
         if self.enable_autocomplete and self.input_buffer:
@@ -2465,34 +2572,13 @@ class TUI():
             self.draw_chat()
 
 
-    def _split_command_popup_item(self, item):
-        """Split a slash-command completion into name/description columns."""
-        display = item[0]
-        if " - " in display:
-            return display.split(" - ", 1)
-        return display, ""
-
-
-    def get_command_popup_hwyx(self):
+    def get_command_popup_layout(self):
         """Return geometry and layout data for the prompt-local command popup."""
-        if not self.command_popup_items or not self.win_chat or not self.win_status_line:
+        if not self.command_popup_items or not self.win_chat:
             return None
         chat_h, chat_w = self.win_chat.getmaxyx()
         chat_y, chat_x = self.win_chat.getbegyx()
-        status_y = self.win_status_line.getbegyx()[0]
-        max_visible = min(chat_h, max(1, status_y - chat_y))
-        if max_visible <= 0 or chat_w <= 2:
-            return None
-        parsed = [self._split_command_popup_item(item) for item in self.command_popup_items]
-        max_name = max(len(name) for name, _ in parsed)
-        max_desc = max(len(desc) for _, desc in parsed)
-        popup_width = min(max_name + max_desc + 6, chat_w)
-        popup_width = max(4, popup_width)
-        name_width = min(max_name + 1, max(1, popup_width - 4))
-        desc_width = max(0, popup_width - name_width - 4)
-        win_size = min(len(parsed), max_visible)
-        top_row = status_y - win_size
-        return (win_size, popup_width, top_row, chat_x), parsed, name_width, desc_width
+        return command_popup.build_layout(self.command_popup_items, chat_h, chat_w, chat_y, chat_x)
 
 
     def mouse_in_command_popup(self, x, y):
@@ -2513,6 +2599,7 @@ class TUI():
         if reset:
             self.command_popup_selected = -1
             self.command_popup_scroll = 0
+            self.command_popup_cycle_prefix = None
         self.command_popup_items = list(items)
         if not self.command_popup_items:
             self.hide_command_popup()
@@ -2530,6 +2617,7 @@ class TUI():
         self.command_popup_selected = -1
         self.command_popup_scroll = 0
         self.command_popup_hwyx = None
+        self.command_popup_cycle_prefix = None
         if had_popup and redraw and not self.disable_drawing:
             self.draw_chat()
 
@@ -2538,6 +2626,7 @@ class TUI():
         """Move command-popup selection up or down."""
         if not self.command_popup_items:
             return
+        self.command_popup_cycle_prefix = None
         total = len(self.command_popup_items)
         if self.command_popup_selected < 0:
             self.command_popup_selected = 0 if step > 0 else total - 1
@@ -2552,60 +2641,38 @@ class TUI():
     def draw_command_popup(self):
         """Draw Exocortex-style slash-command autocomplete over the chat area."""
         with self.lock:
-            layout = self.get_command_popup_hwyx()
+            layout = self.get_command_popup_layout()
             if not layout:
                 self.command_popup_hwyx = None
                 return
-            popup_hwyx, parsed, name_width, desc_width = layout
-            win_size = popup_hwyx[0]
-            total = len(parsed)
-            if total > win_size and self.command_popup_selected >= 0:
-                ideal = self.command_popup_selected - win_size // 2
-                self.command_popup_scroll = max(0, min(ideal, total - win_size))
-            else:
-                self.command_popup_scroll = 0
-            self.command_popup_hwyx = popup_hwyx
+            win_size = layout.height
+            total = len(layout.rows)
+            active_index = self.get_command_popup_active_index()
+            self.command_popup_scroll = command_popup.clamp_scroll(self.command_popup_scroll, active_index, win_size, total)
+            self.command_popup_hwyx = (layout.height, layout.width, layout.y, layout.x)
             chat_y, _ = self.win_chat.getbegyx()
-            rel_y = popup_hwyx[2] - chat_y
+            rel_y = layout.y - chat_y
             for visible_index in range(win_size):
                 item_index = self.command_popup_scroll + visible_index
                 if item_index >= total:
                     break
-                is_selected = item_index == self.command_popup_selected
+                is_selected = item_index == active_index
                 fill_color_id = self.color_id_command_popup_selected if is_selected else self.color_id_command_popup
                 marker_color_id = self.color_id_command_popup_marker_selected if is_selected else self.color_id_command_popup_marker
                 desc_color_id = self.color_id_command_popup_desc_selected if is_selected else self.color_id_command_popup_desc
                 fill_attr = curses.color_pair(fill_color_id) | self.attrib_map[fill_color_id]
                 marker_attr = curses.color_pair(marker_color_id) | self.attrib_map[marker_color_id]
                 desc_attr = curses.color_pair(desc_color_id) | self.attrib_map[desc_color_id]
-                name, desc = parsed[item_index]
+                name, desc = layout.rows[item_index]
                 marker = "▸ " if is_selected else "  "
-                name_text = name[:name_width].ljust(name_width)
-                desc_text = desc[:desc_width].ljust(desc_width)
+                name_text = command_popup.format_popup_column(name, layout.name_width)
+                desc_text = command_popup.format_popup_column(desc, layout.desc_width)
                 row = rel_y + visible_index
-                try:
-                    self.win_chat.insstr(row, 0, " " * popup_hwyx[1], fill_attr)
-                    self.win_chat.insstr(row, 0, marker, marker_attr)
-                    self.win_chat.insstr(row, 2, name_text, fill_attr)
-                    if desc_width:
-                        self.win_chat.insstr(row, 2 + name_width, desc_text, desc_attr)
-                except curses.error:
-                    pass
-            if self.command_popup_scroll > 0:
-                arrow_color_id = self.color_id_command_popup_desc_selected if self.command_popup_selected == self.command_popup_scroll else self.color_id_command_popup_desc
-                arrow_attr = curses.color_pair(arrow_color_id) | self.attrib_map[arrow_color_id]
-                try:
-                    self.win_chat.insstr(rel_y, popup_hwyx[1] - 2, " ▲", arrow_attr)
-                except curses.error:
-                    pass
-            if self.command_popup_scroll + win_size < total:
-                bottom_index = self.command_popup_scroll + win_size - 1
-                arrow_color_id = self.color_id_command_popup_desc_selected if self.command_popup_selected == bottom_index else self.color_id_command_popup_desc
-                arrow_attr = curses.color_pair(arrow_color_id) | self.attrib_map[arrow_color_id]
-                try:
-                    self.win_chat.insstr(rel_y + win_size - 1, popup_hwyx[1] - 2, " ▼", arrow_attr)
-                except curses.error:
-                    pass
+                safe_addstr(self.win_chat, row, 0, " " * layout.width, fill_attr, layout.width)
+                safe_addstr(self.win_chat, row, 0, marker, marker_attr, len(marker))
+                safe_addstr(self.win_chat, row, 2, name_text, fill_attr, layout.name_width)
+                if layout.desc_width:
+                    safe_addstr(self.win_chat, row, 2 + layout.name_width, desc_text, desc_attr, layout.desc_width)
             self.win_chat.noutrefresh()
 
 
@@ -3427,6 +3494,7 @@ class TUI():
                     self.screen.nodelay(False)
                     if self.assist_start:
                         self.assist_start = -1
+                    self.restore_command_popup_cycle_prefix()
                     if self.vim_mode and self.insert_mode:
                         self.set_vim_insert(False)
                         return self.return_input_code(26)
@@ -3456,14 +3524,18 @@ class TUI():
                     self.draw_input_line()
                     continue
                 else:
-                    ctrl_num = parse_ctrl_num_escape(sequence)
-                    if ctrl_num is not None:
-                        self.focus_tree_server(ctrl_num)
-                        continue
+                    if parse_backtab_escape(sequence):
+                        key = BACKTAB
+                    else:
+                        ctrl_num = parse_ctrl_num_escape(sequence)
+                        if ctrl_num is not None:
+                            self.focus_tree_server(ctrl_num)
+                            continue
                 if sequence[-1] == -1 and sequence[-2] == 27:
                     # holding escape key
                     if self.assist_start:
                         self.assist_start = -1
+                    self.restore_command_popup_cycle_prefix()
                     if self.vim_mode and self.insert_mode:
                         self.set_vim_insert(False)
                         return self.return_input_code(26)
@@ -3475,6 +3547,9 @@ class TUI():
                 continue
             if self.keybinding_chain:
                 key = f"{self.keybinding_chain}-{key}"
+
+            if key not in (9, BACKTAB) and self.command_popup_cycle_prefix is not None:
+                self.command_popup_cycle_prefix = None
 
             if key == 10 and self.bracket_paste:
                 # when pasting, dont return, but insert newline character
@@ -3779,7 +3854,9 @@ class TUI():
                 return self.return_input_code(20)
 
             elif key == 9:   # TAB - same as CTRL+I
-                if self.enable_autocomplete:
+                if self.command_popup_items:
+                    self.cycle_command_popup(1)
+                elif self.enable_autocomplete:
                     if self.input_buffer and self.input_index == len(self.input_buffer):
                         completions = utils.complete_path(self.input_buffer, separator=False)
                         if completions:
@@ -3801,6 +3878,10 @@ class TUI():
                     self.add_to_delta_store(tab_str)
                     self.show_cursor()
                     self.spellcheck()
+
+            elif key == BACKTAB:
+                if self.command_popup_items:
+                    self.cycle_command_popup(-1)
 
             elif key in self.keybindings["tree_collapse_threads"]:
                 if (self.tree_format[self.tree_selected_abs] % 10):
@@ -4029,6 +4110,7 @@ class TUI():
         elif self.mouse_in_command_popup(x, y):
             self.set_active_section("main")
             _, y = self.command_popup_mouse_rel_pos(x, y)
+            self.command_popup_cycle_prefix = None
             self.command_popup_selected = min(self.command_popup_scroll + y, len(self.command_popup_items) - 1)
             self.draw_chat()
 

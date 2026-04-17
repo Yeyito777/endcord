@@ -5,8 +5,10 @@ Endcord local/client commands are now typed directly in the main prompt as `/com
 How it works:
 - type `/` in the prompt to open live slash-command autocomplete
 - recognized commands and supported fixed args get a light highlight in the input line
-- use the command-popup navigation keys (`Alt+Up/Down` by default, reusing the same bindings as extra-window navigation) to pick a suggestion
+- use `Tab` / `Shift+Tab` to cycle suggestions Exocortex-style without leaving the prompt
+- use the command-popup navigation keys (`Alt+Up/Down` by default, reusing the same bindings as extra-window navigation) to browse suggestions manually
 - press `Enter` on a selected suggestion to insert it, or just keep typing and press `Enter` to run the command
+- press `Esc` while Tab-cycling to restore the text you originally typed
 - `/help` opens the full local command list in the extra window
 - unknown `/...` input is sent as a normal Discord message instead of being swallowed by the client
 

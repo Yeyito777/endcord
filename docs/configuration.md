@@ -353,6 +353,10 @@ Every next list has additional `start` and `end`- indexes on a line where color 
     Base color for input line.
 - `color_command = [153, -1]`  
     Highlight color for recognized prompt-local slash commands and supported fixed args in the input line.
+- `color_command_popup = [255, "#030814"]`  
+    Background/foreground pair used for unselected rows in the slash-command popup.
+- `color_command_popup_selected = [255, "#0f193c"]`  
+    Background/foreground pair used for the active row in the slash-command popup.
 - `color_cursor = [233, 255]`  
     Color for cursor in input line.
 - `color_misspelled = [222, -1]`  
