@@ -1,15 +1,29 @@
-## Deprecated command system
+## Slash client commands
 
-The legacy client-command system has been deprecated and is intentionally disabled.
+Endcord local/client commands are now typed directly in the main prompt as `/command`.
 
-What is disabled:
+How it works:
+- type `/` in the prompt to open live slash-command autocomplete
+- recognized commands and supported fixed args get a light highlight in the input line
+- use the command-popup navigation keys (`Alt+Up/Down` by default, reusing the same bindings as extra-window navigation) to pick a suggestion
+- press `Enter` on a selected suggestion to insert it, or just keep typing and press `Enter` to run the command
+- `/help` opens the full local command list in the extra window
+- unknown `/...` input is sent as a normal Discord message instead of being swallowed by the client
+
+Examples:
+- `/goto <#channel_id>`
+- `/voice_start_call`
+- `/redraw`
+- `/set theme_path = /path/to/theme.ini`
+- `/switch_tab next`
+
+Still deprecated / disabled:
 - the old command palette
-- legacy `command_bindings` macros
+- legacy `[command_bindings]` macros
 - the legacy `@mention` / `@role` helper
 - the legacy slash/app-command compose flow
-- client commands such as `voice_start_call`, `goto`, `redraw`, `set`, etc.
 
 Archived references:
-- old user-facing command list: `deprecated/commands.md`
-- archived client-command implementation: `endcord/deprecated/command_mode.py`
-- archived mention/slash compose implementation: `endcord/deprecated/input_assist.py`
+- old command-palette docs: `deprecated/commands.md`
+- archived legacy parser / bindings implementation: `endcord/deprecated/command_mode.py`
+- archived mention / slash compose implementation: `endcord/deprecated/input_assist.py`

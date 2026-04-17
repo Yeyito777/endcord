@@ -49,7 +49,7 @@ Note: always put string in `""`. To use `"` inside the string escape it like thi
 - `show_pending_messages = True`  
     Show pending messages in chat with `color_chat_pending` until they are sent. Disable to save some CPU usage when sending messages.  
 - `assist = True`  
-  Assist when typing #channel, :emoji:, ;sticker;. The legacy @mention/@role and slash/app helpers are deprecated.
+  Assist when typing #channel, :emoji:, ;sticker;, and prompt-local `/command`. The legacy @mention/@role and slash/app helpers are deprecated.
 - `cursor_on_time = 0.7`  
     Time in seconds the cursor stays ON. Set to None or 0 to disable cursor blinking.
 - `cursor_off_time = 0.5`  
@@ -351,6 +351,8 @@ Every next list has additional `start` and `end`- indexes on a line where color 
     Color for prompt line.
 - `color_input_line = [255, -1]`  
     Base color for input line.
+- `color_command = [153, -1]`  
+    Highlight color for recognized prompt-local slash commands and supported fixed args in the input line.
 - `color_cursor = [233, 255]`  
     Color for cursor in input line.
 - `color_misspelled = [222, -1]`  

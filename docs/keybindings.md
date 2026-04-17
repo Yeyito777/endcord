@@ -136,8 +136,9 @@ Keybindings for vim mode are configured in section `[vim_mode_bindings]` can be 
 Alternatively key codes can be used too. When specifying chained or multiple bindings, key codes must be used!   
 There are 4 special keybindings, used only in vim mode: `"insert_mode" = "i"`, `"append_mode" = "a"`, `"focus_tree" = 11` (`Ctrl+K`), and `"focus_history" = 14` (`Ctrl+N`). `Ctrl+J` focus-to-chat is handled specially in terminal mode because it shares a keycode with Enter.
 
-### Deprecated command keybindings
-The legacy `[command_bindings]` macro system is deprecated and ignored by the live client.  
+### Command keybindings
+Local client commands now live in the main prompt as slash commands like `/goto` and `/help`; there is no dedicated command-palette keybinding anymore.  
+The legacy `[command_bindings]` macro system is still deprecated and ignored by the live client.  
 The archived implementation and old docs now live in `endcord/deprecated/command_mode.py` and `deprecated/commands.md`.
 
 

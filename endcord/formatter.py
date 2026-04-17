@@ -2720,6 +2720,8 @@ def generate_extra_window_assist(found, assist_type, max_len):
         title_line = "App command:"
     elif assist_type == 7:
         title_line = "File select:"
+    elif assist_type == 8:
+        title_line = "Slash command:"
     else:
         title_line = "Unknown"
     for item in found:

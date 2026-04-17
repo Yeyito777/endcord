@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 
-from endcord import acs, color as color_utils, defaults, peripherals, utils
+from endcord import acs, color as color_utils, defaults, peripherals, slash_commands, utils
 
 logger = logging.getLogger(__name__)
 uses_pgcurses = hasattr(curses, "PGCURSES")
@@ -286,7 +286,7 @@ def draw_chat(win_chat, h, w, chat_buffer, chat_format, chat_index, chat_selecte
     # fill empty lines with spaces so background is drawn all the way
     y -= 1
     while y >= 0:
-        win_chat.insstr(y, 0, "\n", curses.color_pair(0))
+        win_chat.insstr(y, 0, " " * w, curses.color_pair(0))
         y -= 1
 
 
@@ -343,6 +343,7 @@ class TUI():
         self.color_id_title_line = self.init_pair(config["color_title_line"])
         self.color_id_prompt = self.init_pair(config["color_prompt"])
         self.color_id_input_line = self.init_pair(config["color_input_line"])
+        self.color_id_command = self.init_pair(config["color_command"])
         self.color_id_cursor = self.init_pair(config["color_cursor"])
         self.insert_cursor_color_id = self.init_pair(self.build_insert_cursor_color(config["color_cursor"], config["color_input_line"]))
         self.color_id_chat_selected = self.init_pair(config["color_chat_selected"])
@@ -351,6 +352,17 @@ class TUI():
         self.color_id_presence_idle = self.init_pair((208, tree_bg))
         self.color_id_presence_dnd = self.init_pair((196, tree_bg))
         self.color_id_extra_window = self.init_pair(config["color_extra_window"])
+        popup_bg = config["color_extra_window"][1]
+        popup_sel_bg = config["color_extra_line"][1]
+        popup_name_fg = config["color_input_line"][0]
+        popup_desc_fg = config["color_tree_muted"][0]
+        popup_marker_fg = config["color_command"][0]
+        self.color_id_command_popup = self.init_pair((popup_name_fg, popup_bg))
+        self.color_id_command_popup_selected = self.init_pair((popup_name_fg, popup_sel_bg))
+        self.color_id_command_popup_desc = self.init_pair((popup_desc_fg, popup_bg))
+        self.color_id_command_popup_desc_selected = self.init_pair((popup_desc_fg, popup_sel_bg))
+        self.color_id_command_popup_marker = self.init_pair((popup_marker_fg, popup_bg))
+        self.color_id_command_popup_marker_selected = self.init_pair((popup_marker_fg, popup_sel_bg))
         border_inactive_color = config.get("ext_border_inactive_color", config["color_default"][0])
         border_active_color = config.get("ext_border_active_color", config["color_default"][0])
         self.color_id_border_inactive = self.init_pair((border_inactive_color, -1))
@@ -363,6 +375,7 @@ class TUI():
         self.switch_tab_modifier = self.keybindings["switch_tab_modifier"][0][:-4]
         self.command_bindings = command_bindings
         self.screen = screen
+        self.config_keys = set(config.keys())
         self.extensions = []
 
         # load config
@@ -468,6 +481,10 @@ class TUI():
         self.extra_selected = -1
         self.extra_index = 0
         self.extra_select = False
+        self.command_popup_items = []
+        self.command_popup_selected = -1
+        self.command_popup_scroll = 0
+        self.command_popup_hwyx = None
         self.mlist_selected = -1
         self.mlist_index = 0
         self.fun = 0
@@ -622,6 +639,7 @@ class TUI():
             self.tree_hw = self.win_tree.getmaxyx()
             self.win_extra_line = None
             self.win_extra_window = None
+            self.command_popup_hwyx = None
             self.win_member_list = None
 
         # redraw
@@ -729,6 +747,7 @@ class TUI():
             self.tree_hw = self.win_tree.getmaxyx()
             self.win_extra_line = None
             self.win_extra_window = None
+            self.command_popup_hwyx = None
             self.win_member_list = None
 
         # redraw
@@ -838,6 +857,16 @@ class TUI():
         return self.extra_selected
 
 
+    def get_command_popup_selected(self):
+        """Return index of selected prompt-local command completion."""
+        return self.command_popup_selected
+
+
+    def has_command_popup(self):
+        """Return True when the prompt-local command popup is visible."""
+        return bool(self.command_popup_items)
+
+
     def get_mlist_selected(self):
         """Return index of selected line in member list"""
         return self.mlist_selected
@@ -889,6 +918,7 @@ class TUI():
         5 - client command
         6 - app command (deprecated)
         7 - upload file select
+        8 - slash command
         100 - stop assist
         """
         if self.assist_start >= 0:
@@ -911,6 +941,8 @@ class TUI():
                 return None, 100
             if self.assist_start > self.input_index:
                 return None, 100
+        if slash_commands.is_slash_command_text(self.input_buffer) and (not self.vim_mode or self.insert_mode):
+            return self.input_buffer, 8
         if self.enable_autocomplete and self.input_buffer:
             return self.input_buffer, 7
         if self.instant_assist:
@@ -2120,6 +2152,8 @@ class TUI():
                     # swap so start is always left side
                     selected_start_screen, selected_end_screen = selected_end_screen, selected_start_screen
 
+            command_ranges = slash_commands.get_highlight_ranges(self.input_buffer, self.config_keys)
+
             if use_terminal_cursor and not line_text:
                 line_text = " "
 
@@ -2139,12 +2173,18 @@ class TUI():
                 elif pos in self.red_list:
                     safe_insch(self.win_input_line, 0, pos, character, curses.color_pair(self.color_id_presence_dnd))
                 else:
-                    for bad_range in self.misspelled:
-                        if bad_range[0] <= pos < sum(bad_range) and (bad_range[0] > self.cursor_pos or self.cursor_pos >= sum(bad_range)+1):
-                            safe_insch(self.win_input_line, 0, pos, character, curses.color_pair(self.color_id_misspelled) | self.attrib_map[self.color_id_misspelled])
+                    global_pos = start + pos
+                    for command_range in command_ranges:
+                        if command_range[0] <= global_pos < command_range[1]:
+                            safe_insch(self.win_input_line, 0, pos, character, curses.color_pair(self.color_id_command) | self.attrib_map[self.color_id_command])
                             break
                     else:
-                        safe_insch(self.win_input_line, 0, pos, character, curses.color_pair(self.color_id_input_line) | self.attrib_map[self.color_id_input_line])
+                        for bad_range in self.misspelled:
+                            if bad_range[0] <= pos < sum(bad_range) and (bad_range[0] > self.cursor_pos or self.cursor_pos >= sum(bad_range)+1):
+                                safe_insch(self.win_input_line, 0, pos, character, curses.color_pair(self.color_id_misspelled) | self.attrib_map[self.color_id_misspelled])
+                                break
+                        else:
+                            safe_insch(self.win_input_line, 0, pos, character, curses.color_pair(self.color_id_input_line) | self.attrib_map[self.color_id_input_line])
             self.win_input_line.insch(0, pos + 1, "\n", curses.color_pair(0))
             # cursor at the end of string
             if not use_terminal_cursor and not cursor_drawn and self.cursor_pos >= len(line_text):
@@ -2170,6 +2210,8 @@ class TUI():
                     self.color_id_chat_selected,
                 )
                 self.win_chat.noutrefresh()
+                if self.command_popup_items:
+                    self.draw_command_popup()
                 if not norefresh:
                     self.need_update.set()
             except curses.error:
@@ -2421,6 +2463,150 @@ class TUI():
                     self.draw_status_line()
                 self.draw_member_list(self.member_list, self.member_list_format, force=True)
             self.draw_chat()
+
+
+    def _split_command_popup_item(self, item):
+        """Split a slash-command completion into name/description columns."""
+        display = item[0]
+        if " - " in display:
+            return display.split(" - ", 1)
+        return display, ""
+
+
+    def get_command_popup_hwyx(self):
+        """Return geometry and layout data for the prompt-local command popup."""
+        if not self.command_popup_items or not self.win_chat or not self.win_status_line:
+            return None
+        chat_h, chat_w = self.win_chat.getmaxyx()
+        chat_y, chat_x = self.win_chat.getbegyx()
+        status_y = self.win_status_line.getbegyx()[0]
+        max_visible = min(chat_h, max(1, status_y - chat_y))
+        if max_visible <= 0 or chat_w <= 2:
+            return None
+        parsed = [self._split_command_popup_item(item) for item in self.command_popup_items]
+        max_name = max(len(name) for name, _ in parsed)
+        max_desc = max(len(desc) for _, desc in parsed)
+        popup_width = min(max_name + max_desc + 6, chat_w)
+        popup_width = max(4, popup_width)
+        name_width = min(max_name + 1, max(1, popup_width - 4))
+        desc_width = max(0, popup_width - name_width - 4)
+        win_size = min(len(parsed), max_visible)
+        top_row = status_y - win_size
+        return (win_size, popup_width, top_row, chat_x), parsed, name_width, desc_width
+
+
+    def mouse_in_command_popup(self, x, y):
+        """Return True when mouse coords are inside the command popup."""
+        if not self.command_popup_hwyx:
+            return False
+        popup_h, popup_w, popup_y, popup_x = self.command_popup_hwyx
+        return popup_x <= x < popup_x + popup_w and popup_y <= y < popup_y + popup_h
+
+
+    def command_popup_mouse_rel_pos(self, x, y):
+        """Return mouse coordinates relative to the command popup."""
+        return x - self.command_popup_hwyx[3], y - self.command_popup_hwyx[2]
+
+
+    def show_command_popup(self, items, reset=True):
+        """Show the prompt-local command popup without resizing chat."""
+        if reset:
+            self.command_popup_selected = -1
+            self.command_popup_scroll = 0
+        self.command_popup_items = list(items)
+        if not self.command_popup_items:
+            self.hide_command_popup()
+            return
+        if self.command_popup_selected >= len(self.command_popup_items):
+            self.command_popup_selected = len(self.command_popup_items) - 1
+        if not self.disable_drawing:
+            self.draw_chat()
+
+
+    def hide_command_popup(self, redraw=True):
+        """Hide the prompt-local command popup and redraw chat underneath it."""
+        had_popup = bool(self.command_popup_items or self.command_popup_hwyx)
+        self.command_popup_items = []
+        self.command_popup_selected = -1
+        self.command_popup_scroll = 0
+        self.command_popup_hwyx = None
+        if had_popup and redraw and not self.disable_drawing:
+            self.draw_chat()
+
+
+    def move_command_popup_selection(self, step):
+        """Move command-popup selection up or down."""
+        if not self.command_popup_items:
+            return
+        total = len(self.command_popup_items)
+        if self.command_popup_selected < 0:
+            self.command_popup_selected = 0 if step > 0 else total - 1
+        elif 0 <= self.command_popup_selected + step < total:
+            self.command_popup_selected += step
+        elif self.wrap_around and not self.wrap_around_disable:
+            self.command_popup_selected = 0 if step > 0 else total - 1
+        if not self.disable_drawing:
+            self.draw_chat()
+
+
+    def draw_command_popup(self):
+        """Draw Exocortex-style slash-command autocomplete over the chat area."""
+        with self.lock:
+            layout = self.get_command_popup_hwyx()
+            if not layout:
+                self.command_popup_hwyx = None
+                return
+            popup_hwyx, parsed, name_width, desc_width = layout
+            win_size = popup_hwyx[0]
+            total = len(parsed)
+            if total > win_size and self.command_popup_selected >= 0:
+                ideal = self.command_popup_selected - win_size // 2
+                self.command_popup_scroll = max(0, min(ideal, total - win_size))
+            else:
+                self.command_popup_scroll = 0
+            self.command_popup_hwyx = popup_hwyx
+            chat_y, _ = self.win_chat.getbegyx()
+            rel_y = popup_hwyx[2] - chat_y
+            for visible_index in range(win_size):
+                item_index = self.command_popup_scroll + visible_index
+                if item_index >= total:
+                    break
+                is_selected = item_index == self.command_popup_selected
+                fill_color_id = self.color_id_command_popup_selected if is_selected else self.color_id_command_popup
+                marker_color_id = self.color_id_command_popup_marker_selected if is_selected else self.color_id_command_popup_marker
+                desc_color_id = self.color_id_command_popup_desc_selected if is_selected else self.color_id_command_popup_desc
+                fill_attr = curses.color_pair(fill_color_id) | self.attrib_map[fill_color_id]
+                marker_attr = curses.color_pair(marker_color_id) | self.attrib_map[marker_color_id]
+                desc_attr = curses.color_pair(desc_color_id) | self.attrib_map[desc_color_id]
+                name, desc = parsed[item_index]
+                marker = "▸ " if is_selected else "  "
+                name_text = name[:name_width].ljust(name_width)
+                desc_text = desc[:desc_width].ljust(desc_width)
+                row = rel_y + visible_index
+                try:
+                    self.win_chat.insstr(row, 0, " " * popup_hwyx[1], fill_attr)
+                    self.win_chat.insstr(row, 0, marker, marker_attr)
+                    self.win_chat.insstr(row, 2, name_text, fill_attr)
+                    if desc_width:
+                        self.win_chat.insstr(row, 2 + name_width, desc_text, desc_attr)
+                except curses.error:
+                    pass
+            if self.command_popup_scroll > 0:
+                arrow_color_id = self.color_id_command_popup_desc_selected if self.command_popup_selected == self.command_popup_scroll else self.color_id_command_popup_desc
+                arrow_attr = curses.color_pair(arrow_color_id) | self.attrib_map[arrow_color_id]
+                try:
+                    self.win_chat.insstr(rel_y, popup_hwyx[1] - 2, " ▲", arrow_attr)
+                except curses.error:
+                    pass
+            if self.command_popup_scroll + win_size < total:
+                bottom_index = self.command_popup_scroll + win_size - 1
+                arrow_color_id = self.color_id_command_popup_desc_selected if self.command_popup_selected == bottom_index else self.color_id_command_popup_desc
+                arrow_attr = curses.color_pair(arrow_color_id) | self.attrib_map[arrow_color_id]
+                try:
+                    self.win_chat.insstr(rel_y + win_size - 1, popup_hwyx[1] - 2, " ▼", arrow_attr)
+                except curses.error:
+                    pass
+            self.win_chat.noutrefresh()
 
 
     def draw_extra_window(self, title_txt, body_text, select=False, reset_scroll=True):
@@ -3093,7 +3279,10 @@ class TUI():
             self.tree_format_changed = True
 
         elif key in self.keybindings["extra_up"]:
-            if self.extra_window_body and not mouse:
+            if self.command_popup_items and not mouse:
+                self.set_active_section("main")
+                self.move_command_popup_selection(-1)
+            elif self.extra_window_body and not mouse:
                 self.set_active_section("extra")
                 if self.extra_select:
                     if self.extra_selected > 0:
@@ -3120,7 +3309,10 @@ class TUI():
                     self.draw_member_list(self.member_list, self.member_list_format)
 
         elif key in self.keybindings["extra_down"]:
-            if self.extra_window_body and not mouse:
+            if self.command_popup_items and not mouse:
+                self.set_active_section("main")
+                self.move_command_popup_selection(1)
+            elif self.extra_window_body and not mouse:
                 self.set_active_section("extra")
                 if self.extra_select:
                     if self.extra_selected + 1 < len(self.extra_window_body):
@@ -3834,6 +4026,12 @@ class TUI():
             self.set_input_index(input_index)
             self.draw_input_line()
 
+        elif self.mouse_in_command_popup(x, y):
+            self.set_active_section("main")
+            _, y = self.command_popup_mouse_rel_pos(x, y)
+            self.command_popup_selected = min(self.command_popup_scroll + y, len(self.command_popup_items) - 1)
+            self.draw_chat()
+
         elif self.win_extra_window and self.mouse_in_window(x, y, self.win_extra_window):
             self.set_active_section("extra")
             x, y = self.mouse_rel_pos(x, y, self.win_extra_window)
@@ -3868,6 +4066,10 @@ class TUI():
             self.set_active_section("main")
             self.mouse_rel_x = self.mouse_rel_pos(x, y, self.win_chat)[0]
             return 40   # special handling
+
+        if self.mouse_in_command_popup(x, y):
+            self.set_active_section("main")
+            return 27   # select in command popup
 
         if self.win_extra_window and self.mouse_in_window(x, y, self.win_extra_window):
             self.set_active_section("extra")
@@ -3904,6 +4106,13 @@ class TUI():
                 self.common_keybindings(self.KEYBINDINGS_CHAT_UP[0])
             else:
                 self.common_keybindings(self.KEYBINDINGS_CHAT_DOWN[0])
+
+        elif self.mouse_in_command_popup(x, y):
+            self.set_active_section("main")
+            if up:
+                self.common_keybindings(self.keybindings["extra_up"][0])
+            else:
+                self.common_keybindings(self.keybindings["extra_down"][0])
 
         elif self.win_extra_window and self.mouse_in_window(x, y, self.win_extra_window):
             self.set_active_section("extra")
@@ -3942,6 +4151,12 @@ class TUI():
                 self.chat_index -= min(self.mouse_scroll_sensitivity, self.chat_index)
                 self.draw_chat()
                 self.chat_scrolled_top = False
+
+        elif self.mouse_in_command_popup(x, y):
+            if up:
+                self.common_keybindings(self.keybindings["extra_up"][0])
+            else:
+                self.common_keybindings(self.keybindings["extra_down"][0])
 
         elif self.win_extra_window and self.mouse_in_window(x, y, self.win_extra_window):
             if up:

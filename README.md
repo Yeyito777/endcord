@@ -187,13 +187,14 @@ Extra window is drawn for viewing:
 - Pinned messages (`Alt+N`),  `Alt+Enter` or enter with no typed text will jump to selected message.  
 `Alt+Enter` in member list will show user profile of the selected member.  
 
-### Assist with channel, emoji, sticker
-Assist triggers are (the first character): `#channel`, `:emoji:`, `;sticker;`.  
+### Assist with channels, emoji, sticker, slash commands
+Assist triggers are (the first character): `#channel`, `:emoji:`, `;sticker;`, and prompt-local `/command`.  
 The legacy `@mention` / `@role` helper is deprecated and currently disabled.  
 Press `Esc` to stop assist. Re-type trigger to start it again.  
 Navigation: `Alt+Up/Down` - Go up/down, `Alt+Enter` or `Enter` - insert selected item.  
 When inserted in input line, item will usually be shown as `<some_numbers>` - that is intended - do not alter it.  
 Stickers and emoji are sorted into packs, and will be shown as `pack name - emoji/sticker name`, and search is performed on that string.  
+Slash commands are typed directly in the main prompt; use `/help` to browse them.  
 Sticker will also be added to message text and removed when sending.  
 
 ### Adding/Removing reactions
@@ -207,7 +208,9 @@ If this account reacted to the message, that reaction will have `*` prepended to
 Stop recording, close extra window, stop replying, everything else.
 
 ### Client-side commands
-The legacy client-command system is deprecated and currently disabled. Archived notes live in `docs/commands.md` and `endcord/deprecated/command_mode.py`.
+Client-side commands now use prompt-local slash commands such as `/goto`, `/redraw`, `/voice_start_call`, and `/set ...`.  
+Type `/help` in the prompt to browse them.  
+The old command palette and `[command_bindings]` macro system remain deprecated; archived notes live in `deprecated/commands.md` and `endcord/deprecated/command_mode.py`.
 
 ### App commands
 The legacy slash/app-command compose implementation is deprecated and currently disabled.  
@@ -240,7 +243,7 @@ Posts are treated same as threads in channel tree, but only participated posts w
 If there are no posts in the forum (this will happen when switching to forum in never opened server), switch to some channel in the same server, (client must subscribe to some channel so discord can send thread list sync).
 
 ### Redraw
-The old `redraw` client command was part of the deprecated command system and is currently unavailable until the replacement command UI lands.  
+Use `/redraw` in the prompt if the UI ever gets messed up.  
 
 ### Terminal size
 Recommended terminal size for proper viewing is minimum 120 columns and 32 rows, for default theme.

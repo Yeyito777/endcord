@@ -36,6 +36,7 @@ from endcord import (
     perms,
     rpc,
     search,
+    slash_commands,
     tui,
     utils,
 )
@@ -1376,6 +1377,46 @@ class Endcord:
             utils.save_json(self.command_history, "command_history.json")
 
 
+    def show_slash_command_help(self):
+        """Show available prompt-local slash commands in the extra window."""
+        max_w = self.tui.get_dimensions()[2][1]
+        help_lines = slash_commands.get_help_lines()
+        extra_title, extra_body = formatter.generate_extra_window_assist(
+            [(line, line) for line in help_lines],
+            8,
+            max_w,
+        )
+        self.stop_assist(close=False)
+        self.tui.draw_extra_window(extra_title, extra_body, select=False)
+        self.extra_window_open = True
+
+
+    def try_execute_slash_command(self, input_text, chat_sel, tree_sel):
+        """Execute prompt-local slash commands typed directly in the standard prompt."""
+        legacy_text = slash_commands.to_legacy_command_text(input_text)
+        if not legacy_text:
+            return False
+        if legacy_text == "help":
+            self.show_slash_command_help()
+            self.add_to_command_history(input_text)
+            self.reset_states()
+            self.restore_input_text = (None, None)
+            self.update_status_line()
+            return True
+        command_type, command_args = parser.command_string(legacy_text)
+        if command_type == 0 and not command_args:
+            self.stop_assist(close=False)
+            self.reset_states()
+            self.restore_input_text = (input_text, "standard")
+            self.update_status_line()
+            self.update_extra_line("Invalid command arguments.")
+            return True
+        self.stop_assist()
+        self.execute_command(command_type, command_args, legacy_text, chat_sel, tree_sel)
+        self.add_to_command_history(input_text)
+        return True
+
+
     def add_to_channel_cache(self, channel_id, messages, set_pinned):
         """Add messages to channel cache"""
         # format: channel_cache = [[channel_id, messages, pinned, *invalid], ...]
@@ -1945,6 +1986,23 @@ class Endcord:
             # select in extra window / member list
             elif action in (27, 39):
                 self.restore_input_text = (input_text, "standard")
+                if action == 27 and self.assist_type == 8 and self.tui.has_command_popup() and self.assist_found:
+                    popup_selected = self.tui.get_command_popup_selected()
+                    if popup_selected < 0:
+                        continue
+                    new_input_text, new_input_index = self.insert_assist(
+                        input_text,
+                        popup_selected,
+                        self.tui.assist_start,
+                        self.tui.input_index,
+                    )
+                    self.reset_states(reacting=False)
+                    self.update_status_line()
+                    if new_input_text:
+                        self.restore_input_text = (new_input_text, "standard")
+                        self.tui.input_buffer = new_input_text
+                        self.tui.set_input_index(new_input_index)
+                    continue
                 if self.extra_window_open and action == 27:
                     if self.extra_indexes:
                         extra_selected = self.tui.get_extra_selected()
@@ -2418,6 +2476,8 @@ class Endcord:
             elif self.vim_mode and (action == 26 or action == 28):
                 # insert_mode already toggled in tui
                 self.restore_input_text = (input_text, "standard")
+                if self.assist_type == 8 or self.tui.has_command_popup():
+                    self.stop_assist(close=False)
                 self.update_status_line()
 
             # mouse single click on title line
@@ -2459,6 +2519,8 @@ class Endcord:
                         self.restore_input_text = ("", "standard")
                     else:
                         self.restore_input_text = (input_text, "standard")
+                    if self.assist_type == 8:
+                        self.stop_assist(close=False)
                 elif self.extra_window_open:
                     self.stop_extra_window(update=False)
                 elif self.replying["id"]:
@@ -2521,41 +2583,48 @@ class Endcord:
                 pass
 
             # enter
-            elif (action == 0 and input_text and input_text != "\n" and self.active_channel["channel_id"]) or self.command:
+            elif (action == 0 and input_text and input_text != "\n" and (self.active_channel["channel_id"] or slash_commands.is_known_slash_command(input_text))) or self.command:
                 if self.assist_word is not None and self.assist_found:
-                    self.restore_input_text = (input_text, "standard")
-                    new_input_text, new_input_index = self.insert_assist(
-                        input_text,
-                        self.tui.get_extra_selected(),
-                        self.tui.assist_start,
-                        self.tui.input_index,
-                    )
-                    # self.reset_states(reacting=False)
-                    self.update_status_line()
-                    # 1000000 means its command execution and should restore text from store
-                    if new_input_text is not None and new_input_index != 1000000:
-                        if (self.search or self.search_gif) and self.extra_bkp:
-                            self.restore_input_text = (new_input_text, "search")
-                            self.ignore_typing = True
-                        elif self.command and self.extra_bkp:
-                            self.restore_input_text = (new_input_text, "command")
-                            self.ignore_typing = True
-                        elif self.reacting["id"]:
-                            self.restore_input_text = (new_input_text, "react")
-                            self.ignore_typing = True
-                        elif self.uploading:
-                            self.restore_input_text = (new_input_text, "autocomplete")
-                            self.ignore_typing = True
-                        else:
-                            self.restore_input_text = (new_input_text, "standard")
-                        self.tui.input_buffer = new_input_text
-                        self.tui.set_input_index(new_input_index)
+                    if self.assist_type == 8:
+                        extra_selected = self.tui.get_command_popup_selected()
                     else:
-                        self.assist_word = None
-                        self.assist_found = []
-                        if new_input_index != 1000000:
-                            self.restore_input_text = (None, None)
-                    continue
+                        extra_selected = self.tui.get_extra_selected()
+                    if self.assist_type == 8 and extra_selected < 0:
+                        self.stop_assist(close=False)
+                    else:
+                        self.restore_input_text = (input_text, "standard")
+                        new_input_text, new_input_index = self.insert_assist(
+                            input_text,
+                            extra_selected,
+                            self.tui.assist_start,
+                            self.tui.input_index,
+                        )
+                        # self.reset_states(reacting=False)
+                        self.update_status_line()
+                        # 1000000 means its command execution and should restore text from store
+                        if new_input_text is not None and new_input_index != 1000000:
+                            if (self.search or self.search_gif) and self.extra_bkp:
+                                self.restore_input_text = (new_input_text, "search")
+                                self.ignore_typing = True
+                            elif self.command and self.extra_bkp:
+                                self.restore_input_text = (new_input_text, "command")
+                                self.ignore_typing = True
+                            elif self.reacting["id"]:
+                                self.restore_input_text = (new_input_text, "react")
+                                self.ignore_typing = True
+                            elif self.uploading:
+                                self.restore_input_text = (new_input_text, "autocomplete")
+                                self.ignore_typing = True
+                            else:
+                                self.restore_input_text = (new_input_text, "standard")
+                            self.tui.input_buffer = new_input_text
+                            self.tui.set_input_index(new_input_index)
+                        else:
+                            self.assist_word = None
+                            self.assist_found = []
+                            if new_input_index != 1000000:
+                                self.restore_input_text = (None, None)
+                        continue
 
                 if input_text.lower() != "y" and (self.deleting or self.cancel_download or self.hiding_ch["channel_id"]):
                     # anything not "y" when asking for "[Y/n]"
@@ -2717,6 +2786,9 @@ class Endcord:
                             self.extra_window_open = True
                     except ValueError:
                         pass
+
+                elif self.try_execute_slash_command(input_text, chat_sel, tree_sel):
+                    continue
 
                 elif self.slowmode_times.get(self.active_channel["channel_id"]):
                     self.restore_input_text = (input_text, "standard")
@@ -5756,6 +5828,12 @@ class Endcord:
             else:
                 self.assist_found.append(("Provided path is invalid", True))
 
+        elif assist_type == 8:   # slash command
+            self.assist_found = slash_commands.get_matches(self, assist_word)
+            self.assist_word = assist_word
+            self.tui.show_command_popup(self.assist_found)
+            return
+
         max_w = self.tui.get_dimensions()[2][1]
         extra_title, extra_body = formatter.generate_extra_window_assist(self.assist_found, assist_type, max_w)
         self.extra_window_open = True
@@ -5768,15 +5846,18 @@ class Endcord:
     def stop_assist(self, close=True):
         """Stop assisting and hide assist UI"""
         self.tui.instant_assist = False
+        assist_type = self.assist_type
+        if assist_type == 8 or self.tui.has_command_popup():
+            self.tui.hide_command_popup()
         if self.assist_word:
-            if close:
+            if close and assist_type != 8:
                 self.close_extra_window()
             self.assist_word = None
             self.assist_type = None
             self.assist_found = []
             self.tui.assist_start = -1
             # if search was open, restore it
-            if (self.search or self.search_gif or self.command) and self.extra_bkp:
+            if close and (self.search or self.search_gif or self.command) and self.extra_bkp and assist_type != 8:
                 self.extra_window_open = True
                 self.tui.draw_extra_window(self.extra_bkp[0], self.extra_bkp[1], select=True)
 
@@ -5885,6 +5966,12 @@ class Endcord:
             new_text = self.assist_found[index][1]
             new_pos = len(new_text)
             return new_text, new_pos
+        elif self.assist_type == 8:   # slash command
+            new_text = self.assist_found[index][1]
+            if new_text != "/help" and not new_text.endswith(" "):
+                new_text += " "
+            self.stop_assist()
+            return new_text, len(new_text)
         if not end:
             end = len(input_text)
         new_text = input_text[:start-1] + insert_string + input_text[end:]
@@ -8361,6 +8448,8 @@ class Endcord:
             elif assist_type == 7 and assist_word != self.assist_word:   # path
                 paths = utils.complete_path(assist_word, separator=True)
                 self.assist(assist_word, assist_type, query_results=paths)
+            elif self.assist_type == 8:
+                self.stop_assist()
 
             # check gateway for errors
             if self.gateway.error:
