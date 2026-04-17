@@ -61,6 +61,8 @@ SUMMARY_SAVE_INTERVAL = 300   # 5min
 LIMIT_SUMMARIES = 5   # max number of summaries per channel
 INTERACTION_THROTTLING = 3   # delay between sending app interactions
 APP_COMMAND_AUTOCOMPLETE_DELAY = 0.3   # delay for requesting app command autocompletions after stop typing
+STARTUP_PRESENCE_DELAY = 0.5
+STARTUP_GAME_DETECTION_DELAY = 5
 RECENT_CHANNELS_LIMIT = 10
 MB = 1024 * 1024
 USER_UPLOAD_LIMITS = (10*MB, 50*MB, 500*MB, 50*MB)   # premium tier 0, 1, 2, 3 (none, classic, full, basic)
@@ -229,6 +231,16 @@ class Endcord:
             client_prop = None
 
         # initialize stuff
+        self.gateway = gateway.Gateway(
+            self.token,
+            config["custom_host"],
+            client_prop_gateway,
+            self.user_agent,
+            proxy=config["proxy"],
+            capablities=config["capabilities"],
+        )
+        # gateway readiness dominates startup, so kick it off first
+        threading.Thread(target=self.gateway.connect, daemon=True).start()
         self.discord = discord.Discord(
             self.token,
             config["custom_host"],
@@ -240,16 +252,6 @@ class Endcord:
         self.preloaded = False
         self.need_preload = True
         threading.Thread(target=self.preload_chat, daemon=True).start()
-        self.gateway = gateway.Gateway(
-            self.token,
-            config["custom_host"],
-            client_prop_gateway,
-            self.user_agent,
-            proxy=config["proxy"],
-            capablities=config["capabilities"],
-        )
-        # this takes some time, so let other things init in parallel
-        threading.Thread(target=self.gateway.connect, daemon=True).start()
         self.downloader = downloader.Downloader(config["proxy"])
         self.tui = tui.TUI(self.screen, self.config, keybindings, command_bindings)
         if self.fun:
@@ -270,6 +272,7 @@ class Endcord:
         self.my_user_data = None    # same
         self.channel_cache = []
         self.voice_gateway = None
+        self.game_detection = None
         self.reset()
         self.chat.insert(0, f"Connecting to {self.config["custom_host"] or "Discord"}")
         self.gateway_state = self.gateway.get_state()
@@ -324,7 +327,6 @@ class Endcord:
         self.prev_volume_out = 100
         self.prev_volume_in = 100
         # threading.Thread(target=self.profiling_auto_exit, daemon=True).start()
-        self.discord.get_voice_regions()
 
         # init shutdown handlers - replaces handlers from main.py
         for signal_name in ("SIGINT", "SIGHUP", "SIGTERM"):
@@ -497,6 +499,35 @@ class Endcord:
         """Thread that waits then exits cleanly, so profiler (vprof) can process data"""
         time.sleep(20)
         self.run = False
+
+
+    def send_initial_presence(self, delay=0):
+        """Send the initial presence update after the UI is already usable."""
+        if delay:
+            time.sleep(delay)
+        if not self.run or self.gateway_state != 1:
+            return
+        self.gateway.update_presence(
+            self.my_status["status"],
+            custom_status=self.my_status["custom_status"],
+            custom_status_emoji=self.my_status["custom_status_emoji"],
+            activities=self.my_activities,
+            afk=self.my_status["afk"],
+        )
+
+
+    def start_game_detection_service(self, delay=0):
+        """Delay non-essential game detection work until after startup settles."""
+        if delay:
+            time.sleep(delay)
+        if not self.run or not self.enable_game_detection or self.game_detection:
+            return
+        self.game_detection = game_detection.GameDetection(
+            self,
+            self.discord,
+            self.state["games_blacklist"],
+            self.game_detection_download_delay,
+        )
 
 
     def message_sender(self):
@@ -3950,7 +3981,7 @@ class Endcord:
             self.update_tree()
 
         elif cmd_type == 61:   # GAME_DETECTION_BLACKLIST
-            if self.enable_game_detection and self.game_detection.run:
+            if self.enable_game_detection and self.game_detection and self.game_detection.run:
                 games = self.game_detection.get_detected()
                 name = cmd_args["name"].lower()
                 app_id = None
@@ -5694,7 +5725,7 @@ class Endcord:
                         score_cutoff=self.assist_score_cutoff,
                     )
 
-            elif assist_word.lower().startswith("game_detection_blacklist ") and self.enable_game_detection and self.game_detection.run:
+            elif assist_word.lower().startswith("game_detection_blacklist ") and self.enable_game_detection and self.game_detection and self.game_detection.run:
                 self.assist_found = search.search_games(
                     self.game_detection.get_detected(),
                     self.state["games_blacklist"],
@@ -7821,6 +7852,7 @@ class Endcord:
                 sys.exit(self.gateway.error + ERROR_TEXT)
             time.sleep(0.2)
         self.my_id = self.gateway.get_my_id()
+        self.discord.set_my_id(self.my_id)
         self.formatter.set_my_id(self.my_id)
         self.premium = self.gateway.get_premium()
         self.my_user_data = self.gateway.get_my_user_data()
@@ -7982,15 +8014,6 @@ class Endcord:
         # open uncollapsed guilds, generate and draw tree
         self.open_guild(self.active_channel["guild_id"], restore=True)
 
-        # send new presence
-        self.gateway.update_presence(
-            self.my_status["status"],
-            custom_status=self.my_status["custom_status"],
-            custom_status_emoji=self.my_status["custom_status_emoji"],
-            activities=self.my_activities,
-            afk=self.my_status["afk"],
-        )
-
         # start daemon threads
         threading.Thread(target=self.wait_input, daemon=True, args=()).start()
         threading.Thread(target=self.message_sender, daemon=True).start()
@@ -8000,14 +8023,10 @@ class Endcord:
         if self.enable_rpc:
             self.rpc = rpc.RPC(self.discord, self.my_user_data, self.config)
 
-        # start game detection service
+        # defer non-critical startup work until the UI is already usable
+        threading.Thread(target=self.send_initial_presence, daemon=True, args=(STARTUP_PRESENCE_DELAY, )).start()
         if self.enable_game_detection:
-            self.game_detection = game_detection.GameDetection(
-                self,
-                self.discord,
-                self.state["games_blacklist"],
-                self.game_detection_download_delay,
-            )
+            threading.Thread(target=self.start_game_detection_service, daemon=True, args=(STARTUP_GAME_DETECTION_DELAY, )).start()
 
         # start extra line remover thread
         threading.Thread(target=self.extra_line_remover, daemon=True).start()
@@ -8158,7 +8177,7 @@ class Endcord:
             if self.enable_rpc:
                 rpc_activities, changed = self.rpc.get_activities()
                 if changed and self.gateway_state == 1:
-                    if self.enable_game_detection:
+                    if self.enable_game_detection and self.game_detection:
                         game_activities, _ = self.game_detection.get_activities()
                         rpc_apps_ids = [d["application_id"] for d in rpc_activities]
                         self.my_activities = rpc_activities + [d for d in game_activities if d["application_id"] not in rpc_apps_ids]
@@ -8173,7 +8192,7 @@ class Endcord:
                     )
 
             # send new detectable games activities
-            if self.enable_game_detection:
+            if self.enable_game_detection and self.game_detection:
                 game_activities, changed = self.game_detection.get_activities()
                 if changed and self.gateway_state == 1:
                     if self.enable_rpc:

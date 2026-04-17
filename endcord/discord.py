@@ -155,7 +155,7 @@ class Discord():
         self.connection_pool_lock = threading.Lock()
         self.total_requests = 0
 
-        self.my_id = self.get_my_id(exit_on_error=True)
+        self.my_id = None
         self.activity_token = None
         self.protos = [[], []]
         self.stickers = []
@@ -286,15 +286,30 @@ class Discord():
                 entry[2] = now
 
 
+    def ensure_my_id(self, exit_on_error=False):
+        """Lazily fetch and cache my discord user ID when needed."""
+        if self.my_id is None:
+            self.my_id = self.get_my_id(exit_on_error=exit_on_error)
+        return self.my_id
+
+
+    def set_my_id(self, user_id):
+        """Store my discord user ID when another startup path already knows it."""
+        self.my_id = user_id
+
+
     def get_my_id(self, exit_on_error=False):
         """Get my discord user ID"""
+        if self.my_id is not None:
+            return self.my_id
         message_data = None
         data, status = self.request("GET", "/api/v9/users/@me", message_data, self.header, exit_on_error=exit_on_error)
         if not status:
             return None
         if status == 200:
             data = json.loads(data)
-            return data["id"]
+            self.my_id = data["id"]
+            return self.my_id
         if status in (400, 401):   # bad request or unauthorized
             logger.error("unauthorized access. Probably invalid token. Exiting...")
             raise SystemExit("unauthorized access. Probably invalid token. Exiting...")
@@ -407,8 +422,9 @@ class Discord():
         1 - single person text
         3 - group DM (name is not None)
         """
+        my_id = self.ensure_my_id()
         message_data = None
-        url = f"/api/v9/users/{self.my_id}/channels"
+        url = f"/api/v9/users/{my_id}/channels"
         data, status = self.request("GET", url, message_data, self.header)
         if not status:
             return None
@@ -1971,14 +1987,15 @@ class Discord():
         https://docs.discord.com/developers/interactions/application-commands#application-command-object
         To obtain role ids for specific guild, run "dump_roles" endcord command while inside desired guild.
         """
+        my_id = self.ensure_my_id(exit_on_error=True)
         if is_json:
             message_data = command
         else:
             message_data = json.dumps(command)
         if guild_id:
-            url = f"/api/v9/applications/{self.my_id}/guilds/{guild_id}/commands"
+            url = f"/api/v9/applications/{my_id}/guilds/{guild_id}/commands"
         else:
-            url = f"/api/v9/applications/{self.my_id}/commands"
+            url = f"/api/v9/applications/{my_id}/commands"
         data, status = self.request("POST", url, message_data, self.header)
         if not status:
             return None
@@ -1992,11 +2009,12 @@ class Discord():
 
     def bot_update_command(self, command, command_id, guild_id=None, resource=None):
         """Update command for this bot. This endpoint works ONLY FOR BOTS."""
+        my_id = self.ensure_my_id(exit_on_error=True)
         message_data = json.dumps(command)
         if guild_id:
-            url = f"/api/v9/applications/{self.my_id}/guilds/{guild_id}/commands/{command_id}"
+            url = f"/api/v9/applications/{my_id}/guilds/{guild_id}/commands/{command_id}"
         else:
-            url = f"/api/v9/applications/{self.my_id}/commands/{command_id}"
+            url = f"/api/v9/applications/{my_id}/commands/{command_id}"
         if resource:
             url += "/" + resource
         data, status = self.request("PATCH", url, message_data, self.header)
@@ -2010,11 +2028,12 @@ class Discord():
 
     def bot_delete_command(self, command_id, guild_id=None):
         """Delete command for this bot. This endpoint works ONLY FOR BOTS."""
+        my_id = self.ensure_my_id(exit_on_error=True)
         message_data = None
         if guild_id:
-            url = f"/api/v9/applications/{self.my_id}/guilds/{guild_id}/commands/{command_id}"
+            url = f"/api/v9/applications/{my_id}/guilds/{guild_id}/commands/{command_id}"
         else:
-            url = f"/api/v9/applications/{self.my_id}/commands/{command_id}"
+            url = f"/api/v9/applications/{my_id}/commands/{command_id}"
         data, status = self.request("DELETE", url, message_data, self.header)
         if not status:
             return None
@@ -2042,7 +2061,8 @@ class Discord():
 
     def bot_edit_interaction(self, interaction, interaction_token):
         """Edit already sent interaction"""
-        url = f"/api/v9/webhooks/{self.my_id}/{interaction_token}/messages/@original"
+        my_id = self.ensure_my_id(exit_on_error=True)
+        url = f"/api/v9/webhooks/{my_id}/{interaction_token}/messages/@original"
         message_data = json.dumps(interaction)
         data, status = self.request("PATCH", url, message_data, self.header)
         if not status:
@@ -2055,8 +2075,9 @@ class Discord():
 
     def bot_delete_interaction(self, interaction_token):
         """Delete already sent interaction"""
+        my_id = self.ensure_my_id(exit_on_error=True)
         message_data = None
-        url = f"/api/v9/webhooks/{self.my_id}/{interaction_token}/messages/@original"
+        url = f"/api/v9/webhooks/{my_id}/{interaction_token}/messages/@original"
         data, status = self.request("DELETE", url, message_data, self.header)
         if not status:
             return None
